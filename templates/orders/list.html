@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+{% block title %}Sales Orders — Goodvalley{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2 class="mb-0">Sales Orders</h2>
+  <a href="{{ url_for('new_order') }}" class="btn btn-primary">
+    <i class="bi bi-plus-lg me-1"></i>New Order
+  </a>
+</div>
+
+{% if orders %}
+<div class="card shadow-sm">
+  <table class="table table-hover mb-0">
+    <thead class="table-light">
+      <tr>
+        <th>#</th>
+        <th>Buyer</th>
+        <th>Status</th>
+        <th>Bins Allocated</th>
+        <th>Total Weight (kg)</th>
+        <th>Created</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for order in orders %}
+      <tr>
+        <td class="text-muted">{{ order.id }}</td>
+        <td class="fw-semibold">{{ order.buyer_name }}</td>
+        <td>
+          <span class="badge bg-{{ STATUS_BADGE[order.status] }}">
+            {{ order.status | capitalize }}
+          </span>
+        </td>
+        <td>{{ order.order_bins | length }}</td>
+        <td>
+          {% if order.order_bins %}
+            {{ '%.1f' | format(order.total_weight) }}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td class="text-muted small">{{ order.created_at.strftime('%d %b %Y') }}</td>
+        <td class="text-end">
+          <a href="{{ url_for('order_detail', order_id=order.id) }}"
+             class="btn btn-sm btn-outline-secondary">
+            View <i class="bi bi-arrow-right ms-1"></i>
+          </a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-inbox display-4 d-block mb-3"></i>
+  <p class="mb-0">No orders yet. Create one to get started.</p>
+</div>
+{% endif %}
+{% endblock %}

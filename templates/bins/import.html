@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% block title %}Import Bins — Goodvalley{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <a href="{{ url_for('list_bins') }}" class="text-muted text-decoration-none">
+    <i class="bi bi-arrow-left me-1"></i>Back to Inventory
+  </a>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="card shadow-sm mb-4">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-upload me-2"></i>Import Bins from Excel
+      </div>
+      <div class="card-body">
+        <form method="POST" enctype="multipart/form-data">
+          <div class="mb-4">
+            <label class="form-label fw-semibold">
+              Select .xlsx file <span class="text-danger">*</span>
+            </label>
+            <input type="file" name="file" class="form-control" accept=".xlsx" required>
+          </div>
+          <div class="d-grid">
+            <button type="submit" class="btn btn-primary btn-lg">
+              <i class="bi bi-upload me-2"></i>Upload and Import
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card border-0 bg-light">
+      <div class="card-body">
+        <h6 class="fw-semibold mb-3">
+          <i class="bi bi-table me-2"></i>Required Excel Format
+        </h6>
+        <p class="small text-muted mb-2">
+          The first row must be a header. Data starts on row 2.
+          Columns must appear in this exact order:
+        </p>
+        <table class="table table-sm table-bordered bg-white small">
+          <thead class="table-light">
+            <tr>
+              <th>Column A</th>
+              <th>Column B</th>
+              <th>Column C</th>
+              <th>Column D</th>
+              <th>Column E</th>
+              <th>Column F</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Bin ID</td>
+              <td>Producer</td>
+              <td>Weight (kg)</td>
+              <td>Drying Method</td>
+              <td>Caliber</td>
+              <td>Notes</td>
+            </tr>
+            <tr class="text-muted">
+              <td>BIN-001</td>
+              <td>Smith Farm</td>
+              <td>320.5</td>
+              <td>Oven Drying</td>
+              <td>50/60</td>
+              <td><em>optional</em></td>
+            </tr>
+          </tbody>
+        </table>
+        <ul class="small text-muted mb-0 ps-3">
+          <li><strong>Drying Method</strong> must be: <code>Oven Drying</code>, <code>Field Drying</code>, or <code>Other</code></li>
+          <li><strong>Caliber</strong> must be in <code>XX/YY</code> format (e.g. <code>50/60</code>)</li>
+          <li>Rows with a duplicate Bin ID are skipped automatically</li>
+          <li>Fully empty rows are ignored</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

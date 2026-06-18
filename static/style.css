@@ -1,0 +1,33 @@
+body {
+  background-color: #f8f9fa;
+}
+
+.navbar-brand {
+  letter-spacing: 0.02em;
+}
+
+.card {
+  border-radius: 0.5rem;
+}
+
+.card-header {
+  border-bottom: 1px solid rgba(0,0,0,.08);
+  padding: 0.85rem 1.25rem;
+}
+
+.table > :not(caption) > * > * {
+  padding: 0.65rem 0.75rem;
+}
+
+.badge {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* Subtle green/yellow availability badges */
+.bg-success-subtle  { background-color: #d1e7dd !important; }
+.bg-warning-subtle  { background-color: #fff3cd !important; }
+.text-success       { color: #0a6640 !important; }
+.text-warning       { color: #856404 !important; }
+.border-success-subtle { border-color: #a3cfbb !important; }
+.border-warning-subtle { border-color: #ffe69c !important; }

@@ -1,0 +1,277 @@
+{% extends 'base.html' %}
+{% block title %}Order #{{ order.id }} — {{ order.buyer_name }}{% endblock %}
+
+{% block content %}
+
+{# ── HEADER ── #}
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <a href="{{ url_for('list_orders') }}" class="text-muted text-decoration-none small">
+      <i class="bi bi-arrow-left me-1"></i>All Orders
+    </a>
+    <h2 class="mb-0 mt-1">
+      {{ order.buyer_name }}
+      <span class="badge bg-{{ STATUS_BADGE[order.status] }} fs-6 ms-2 align-middle">
+        {{ order.status | capitalize }}
+      </span>
+    </h2>
+    <div class="text-muted small mt-1">
+      Order #{{ order.id }} &nbsp;·&nbsp;
+      Created {{ order.created_at.strftime('%d %b %Y') }}
+    </div>
+  </div>
+
+  {# Status transition buttons #}
+  {% if STATUS_TRANSITIONS[order.status] %}
+  <div class="d-flex gap-2 flex-wrap">
+    {% for next_status in STATUS_TRANSITIONS[order.status] %}
+      <form method="POST" action="{{ url_for('update_order_status', order_id=order.id) }}"
+            {% if next_status == 'cancelled' %}
+            onsubmit="return confirm('Cancel this order? All allocated bins will be released.');"
+            {% endif %}>
+        <input type="hidden" name="status" value="{{ next_status }}">
+        <button type="submit"
+                class="btn btn-sm {% if next_status == 'cancelled' %}btn-outline-danger{% else %}btn-outline-primary{% endif %}">
+          {% if next_status == 'cancelled' %}
+            <i class="bi bi-x-circle me-1"></i>Cancel Order
+          {% elif next_status == 'confirmed' %}
+            <i class="bi bi-check-circle me-1"></i>Confirm
+          {% elif next_status == 'shipped' %}
+            <i class="bi bi-truck me-1"></i>Mark Shipped
+          {% elif next_status == 'closed' %}
+            <i class="bi bi-lock me-1"></i>Close Order
+          {% endif %}
+        </button>
+      </form>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="row g-4">
+
+  {# ── LEFT COLUMN ── #}
+  <div class="col-lg-8">
+
+    {# Allocated bins #}
+    <div class="card shadow-sm mb-4">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span class="fw-semibold">
+          <i class="bi bi-archive me-2"></i>Allocated Bins
+        </span>
+        <span class="badge bg-secondary">{{ order.order_bins | length }} bins</span>
+      </div>
+      {% if order.order_bins %}
+      <table class="table table-sm table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Bin ID</th>
+            <th>Producer</th>
+            <th>Caliber</th>
+            <th>Drying</th>
+            <th class="text-end">Weight (kg)</th>
+            {% if order.status not in ('shipped', 'closed', 'cancelled') %}
+            <th></th>
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for ob in order.order_bins %}
+          <tr>
+            <td class="fw-semibold">{{ ob.bin.bin_identifier }}</td>
+            <td>{{ ob.bin.producer_name }}</td>
+            <td>{{ ob.bin.caliber_label }}</td>
+            <td>{{ DRYING_METHODS[ob.bin.drying_method] }}</td>
+            <td class="text-end">{{ ob.bin.weight_kg }}</td>
+            {% if order.status not in ('shipped', 'closed', 'cancelled') %}
+            <td class="text-end">
+              <form method="POST"
+                    action="{{ url_for('deallocate_bin', order_id=order.id, bin_id=ob.bin.id) }}"
+                    onsubmit="return confirm('Remove this bin from the order?');">
+                <button type="submit" class="btn btn-sm btn-link text-danger p-0">
+                  <i class="bi bi-x-lg"></i>
+                </button>
+              </form>
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-light">
+          <tr>
+            <td colspan="{% if order.status not in ('shipped', 'closed', 'cancelled') %}4{% else %}3{% endif %}"
+                class="text-end fw-semibold">Total weight:</td>
+            <td class="text-end fw-bold">{{ '%.1f' | format(order.total_weight) }} kg</td>
+            {% if order.status not in ('shipped', 'closed', 'cancelled') %}<td></td>{% endif %}
+          </tr>
+        </tfoot>
+      </table>
+      {% else %}
+      <div class="card-body text-muted text-center py-4">
+        No bins allocated yet. Use the search below to find and allocate bins.
+      </div>
+      {% endif %}
+    </div>
+
+    {# Search + allocate — hidden once shipped/closed/cancelled #}
+    {% if order.status not in ('shipped', 'closed', 'cancelled') %}
+    <div class="card shadow-sm">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-search me-2"></i>Search Available Bins
+      </div>
+      <div class="card-body">
+        <form method="GET" action="{{ url_for('order_detail', order_id=order.id) }}">
+          <input type="hidden" name="search" value="1">
+          <div class="row g-3 align-items-end">
+            <div class="col-sm-4">
+              <label class="form-label small fw-semibold">Caliber From</label>
+              <select name="caliber_low" class="form-select">
+                <option value="">Any</option>
+                {% for lo, hi in CALIBER_OPTIONS %}
+                  <option value="{{ lo }}"
+                    {% if cal_low is not none and cal_low|string == lo|string %}selected{% endif %}>
+                    {{ lo }}/{{ hi }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label small fw-semibold">Caliber To</label>
+              <select name="caliber_high" class="form-select">
+                <option value="">Any</option>
+                {% for lo, hi in CALIBER_OPTIONS %}
+                  <option value="{{ hi }}"
+                    {% if cal_high is not none and cal_high|string == hi|string %}selected{% endif %}>
+                    {{ lo }}/{{ hi }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label small fw-semibold">Drying Method</label>
+              <select name="drying_method" class="form-select">
+                <option value="">Any</option>
+                {% for key, label in DRYING_METHODS.items() %}
+                  <option value="{{ key }}"
+                    {% if drying == key %}selected{% endif %}>
+                    {{ label }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-primary">
+                <i class="bi bi-search me-1"></i>Search
+              </button>
+            </div>
+          </div>
+        </form>
+
+        {# Search results #}
+        {% if searched %}
+        <hr class="mt-4">
+        {% if search_results %}
+        <form method="POST" action="{{ url_for('allocate_bins', order_id=order.id) }}">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-semibold">
+              {{ search_results | length }} available bin(s) found
+            </span>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="selectAll">
+                Select All
+              </button>
+              <button type="submit" class="btn btn-sm btn-success">
+                <i class="bi bi-plus-circle me-1"></i>Allocate Selected
+              </button>
+            </div>
+          </div>
+          <table class="table table-sm table-hover">
+            <thead class="table-light">
+              <tr>
+                <th style="width:2rem"></th>
+                <th>Bin ID</th>
+                <th>Producer</th>
+                <th>Caliber</th>
+                <th>Drying</th>
+                <th class="text-end">Weight (kg)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for bin in search_results %}
+              <tr>
+                <td>
+                  <input class="form-check-input bin-checkbox" type="checkbox"
+                         name="bin_ids" value="{{ bin.id }}">
+                </td>
+                <td class="fw-semibold">{{ bin.bin_identifier }}</td>
+                <td>{{ bin.producer_name }}</td>
+                <td>{{ bin.caliber_label }}</td>
+                <td>{{ DRYING_METHODS[bin.drying_method] }}</td>
+                <td class="text-end">{{ bin.weight_kg }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </form>
+        {% else %}
+        <div class="text-muted text-center py-3">
+          <i class="bi bi-inbox me-2"></i>No available bins match these criteria.
+        </div>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}{# end if not shipped/closed/cancelled #}
+
+  </div>{# end left column #}
+
+  {# ── RIGHT COLUMN: order info #}
+  <div class="col-lg-4">
+    <div class="card shadow-sm">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-info-circle me-2"></i>Order Requirements
+      </div>
+      <div class="card-body">
+        <dl class="mb-0">
+          <dt class="text-muted small">Caliber Range</dt>
+          <dd class="mb-3">
+            {% if order.req_caliber_low and order.req_caliber_high %}
+              {{ order.req_caliber_low }}/{{ order.req_caliber_low + 10 }}
+              →
+              {{ order.req_caliber_high - 10 }}/{{ order.req_caliber_high }}
+            {% else %}
+              <span class="text-muted">Not specified</span>
+            {% endif %}
+          </dd>
+
+          <dt class="text-muted small">Drying Method</dt>
+          <dd class="mb-3">
+            {% if order.req_drying_method %}
+              {{ DRYING_METHODS[order.req_drying_method] }}
+            {% else %}
+              <span class="text-muted">Not specified</span>
+            {% endif %}
+          </dd>
+
+          {% if order.notes %}
+          <dt class="text-muted small">Notes</dt>
+          <dd class="mb-0">{{ order.notes }}</dd>
+          {% endif %}
+        </dl>
+      </div>
+    </div>
+  </div>
+
+</div>{# end row #}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.getElementById('selectAll')?.addEventListener('click', function () {
+    const boxes = document.querySelectorAll('.bin-checkbox');
+    const allChecked = [...boxes].every(b => b.checked);
+    boxes.forEach(b => b.checked = !allChecked);
+    this.textContent = allChecked ? 'Select All' : 'Deselect All';
+  });
+</script>
+{% endblock %}

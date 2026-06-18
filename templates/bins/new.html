@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% block title %}Add Bin — Goodvalley{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <a href="{{ url_for('list_bins') }}" class="text-muted text-decoration-none">
+    <i class="bi bi-arrow-left me-1"></i>Back to Inventory
+  </a>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-plus-circle me-2"></i>Add New Bin
+      </div>
+      <div class="card-body">
+        <form method="POST">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Bin ID <span class="text-danger">*</span></label>
+            <input type="text" name="bin_identifier" class="form-control"
+                   value="{{ request.form.get('bin_identifier', '') }}"
+                   placeholder="e.g. BIN-0042" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Producer Name <span class="text-danger">*</span></label>
+            <input type="text" name="producer_name" class="form-control"
+                   value="{{ request.form.get('producer_name', '') }}"
+                   placeholder="e.g. Fernández Farm" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Weight (kg) <span class="text-danger">*</span></label>
+            <input type="number" name="weight_kg" class="form-control"
+                   value="{{ request.form.get('weight_kg', '') }}"
+                   step="0.01" min="0" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Drying Method <span class="text-danger">*</span></label>
+            <select name="drying_method" class="form-select" required>
+              <option value="" disabled selected>Select…</option>
+              {% for key, label in DRYING_METHODS.items() %}
+                <option value="{{ key }}"
+                  {% if request.form.get('drying_method') == key %}selected{% endif %}>
+                  {{ label }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="row">
+            <div class="col-6">
+              <label class="form-label fw-semibold">Caliber Low <span class="text-danger">*</span></label>
+              <select name="caliber_low" class="form-select" required>
+                <option value="" disabled selected>Select…</option>
+                {% for lo, hi in CALIBER_OPTIONS %}
+                  <option value="{{ lo }}"
+                    {% if request.form.get('caliber_low') == lo|string %}selected{% endif %}>
+                    {{ lo }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-semibold">Caliber High <span class="text-danger">*</span></label>
+              <select name="caliber_high" class="form-select" required>
+                <option value="" disabled selected>Select…</option>
+                {% for lo, hi in CALIBER_OPTIONS %}
+                  <option value="{{ hi }}"
+                    {% if request.form.get('caliber_high') == hi|string %}selected{% endif %}>
+                    {{ hi }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="mb-4 mt-3">
+            <label class="form-label fw-semibold">Notes</label>
+            <textarea name="notes" class="form-control" rows="2"
+                      placeholder="Optional">{{ request.form.get('notes', '') }}</textarea>
+          </div>
+          <div class="d-grid">
+            <button type="submit" class="btn btn-primary btn-lg">Add Bin</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

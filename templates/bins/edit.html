@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% block title %}Edit Bin {{ bin.bin_identifier }} — Goodvalley{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <a href="{{ url_for('list_bins') }}" class="text-muted text-decoration-none">
+    <i class="bi bi-arrow-left me-1"></i>Back to Inventory
+  </a>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+
+    {% if not bin.is_available %}
+    <div class="alert alert-warning">
+      <i class="bi bi-exclamation-triangle me-2"></i>
+      This bin is currently allocated to
+      <a href="{{ url_for('order_detail', order_id=bin.allocation.order_id) }}" class="fw-semibold">
+        Order #{{ bin.allocation.order_id }} ({{ bin.allocation.order.buyer_name }})
+      </a>.
+      Editing it will update the data but will not affect its allocation.
+    </div>
+    {% endif %}
+
+    <div class="card shadow-sm">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-pencil me-2"></i>Edit Bin {{ bin.bin_identifier }}
+      </div>
+      <div class="card-body">
+        <form method="POST">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Bin ID</label>
+            <input type="text" class="form-control" value="{{ bin.bin_identifier }}" disabled>
+            <div class="form-text">Bin ID cannot be changed.</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Producer Name <span class="text-danger">*</span></label>
+            <input type="text" name="producer_name" class="form-control"
+                   value="{{ request.form.get('producer_name', bin.producer_name) }}" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Weight (kg) <span class="text-danger">*</span></label>
+            <input type="number" name="weight_kg" class="form-control"
+                   value="{{ request.form.get('weight_kg', bin.weight_kg) }}"
+                   step="0.01" min="0" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Drying Method <span class="text-danger">*</span></label>
+            <select name="drying_method" class="form-select" required>
+              {% for key, label in DRYING_METHODS.items() %}
+                <option value="{{ key }}"
+                  {% if (request.form.get('drying_method') or bin.drying_method) == key %}selected{% endif %}>
+                  {{ label }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="row">
+            <div class="col-6">
+              <label class="form-label fw-semibold">Caliber Low <span class="text-danger">*</span></label>
+              <select name="caliber_low" class="form-select" required>
+                {% for lo, hi in CALIBER_OPTIONS %}
+                  <option value="{{ lo }}"
+                    {% if (request.form.get('caliber_low', bin.caliber_low|string)) == lo|string %}selected{% endif %}>
+                    {{ lo }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-semibold">Caliber High <span class="text-danger">*</span></label>
+              <select name="caliber_high" class="form-select" required>
+                {% for lo, hi in CALIBER_OPTIONS %}
+                  <option value="{{ hi }}"
+                    {% if (request.form.get('caliber_high', bin.caliber_high|string)) == hi|string %}selected{% endif %}>
+                    {{ hi }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="mb-4 mt-3">
+            <label class="form-label fw-semibold">Notes</label>
+            <textarea name="notes" class="form-control" rows="2">{{ request.form.get('notes', bin.notes or '') }}</textarea>
+          </div>
+          <div class="d-grid">
+            <button type="submit" class="btn btn-primary btn-lg">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
