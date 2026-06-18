@@ -10,8 +10,8 @@ class Bin(db.Model):
     producer_name = db.Column(db.String, nullable=False)
     weight_kg = db.Column(db.Numeric(10, 2), nullable=False)
     drying_method = db.Column(db.String, nullable=False)  # 'oven', 'field', 'other'
-    caliber_low = db.Column(db.Integer, nullable=False)
-    caliber_high = db.Column(db.Integer, nullable=False)
+    caliber_low = db.Column(db.Integer, nullable=True)
+    caliber_high = db.Column(db.Integer, nullable=True)
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -23,6 +23,8 @@ class Bin(db.Model):
 
     @property
     def caliber_label(self):
+        if self.caliber_low is None or self.caliber_high is None:
+            return 'N/A'
         return f'{self.caliber_low}/{self.caliber_high}'
 
 

@@ -52,6 +52,14 @@ def create_app():
     with app.app_context():
         from models import Bin, Order, OrderBin  # noqa: F401
         db.create_all()
+        # Migration: allow caliber columns to be null (handles pre-existing tables)
+        try:
+            with db.engine.connect() as conn:
+                conn.execute(db.text('ALTER TABLE bins ALTER COLUMN caliber_low DROP NOT NULL'))
+                conn.execute(db.text('ALTER TABLE bins ALTER COLUMN caliber_high DROP NOT NULL'))
+                conn.commit()
+        except Exception:
+            pass
 
     @app.context_processor
     def inject_constants():
@@ -287,59 +295,87 @@ def create_app():
             wb = openpyxl.load_workbook(BytesIO(file.read()))
             ws = wb.active
 
+            # Spanish and English drying method names
             drying_map = {
-                'oven drying': 'oven', 'oven': 'oven',
-                'field drying': 'field', 'field': 'field',
-                'other': 'other',
+                'oven drying': 'oven', 'oven': 'oven', 'horno': 'oven',
+                'field drying': 'field', 'field': 'field', 'cancha': 'field',
+                'other': 'other', 'otro': 'other',
             }
+
+            # Auto-detect the header row by finding the row containing "TARJA"
+            header_row_num = None
+            col = {}
+            for idx, row in enumerate(ws.iter_rows(max_row=15, values_only=True), start=1):
+                vals = [str(v).upper().strip() if v is not None else '' for v in row]
+                if 'TARJA' in vals:
+                    header_row_num = idx
+                    col = {name: i for i, name in enumerate(vals)}
+                    break
+
+            if header_row_num is None:
+                flash('Could not find a header row with a TARJA column. Check the file format.', 'danger')
+                return redirect(url_for('import_bins'))
 
             errors = []
             added = 0
             skipped = 0
 
-            for row_num, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-                # Skip fully empty rows
+            for row_num, row in enumerate(
+                ws.iter_rows(min_row=header_row_num + 1, values_only=True),
+                start=header_row_num + 1,
+            ):
                 if not any(cell is not None for cell in row):
                     continue
 
-                row = list(row) + [None] * 6  # ensure at least 6 columns
-                bin_id_val, producer, weight, drying, caliber, notes = row[:6]
+                def cell(name):
+                    i = col.get(name)
+                    return row[i] if i is not None and i < len(row) else None
 
-                if bin_id_val is None:
-                    errors.append(f'Row {row_num}: Missing Bin ID — skipped.')
+                tarja    = cell('TARJA')
+                neto     = cell('NETO')
+                productor = cell('PRODUCTOR')
+                serie    = cell('SERIE')
+                secado   = cell('SECADO')
+
+                if tarja is None:
+                    errors.append(f'Row {row_num}: Missing TARJA — skipped.')
                     continue
 
-                # Parse caliber e.g. "50/60"
-                caliber_str = str(caliber).strip() if caliber is not None else ''
-                if '/' not in caliber_str:
-                    errors.append(f'Row {row_num}: Invalid caliber "{caliber}" — expected "50/60" format.')
-                    continue
-                try:
-                    lo, hi = caliber_str.split('/', 1)
-                    cal_low, cal_high = int(lo), int(hi)
-                except ValueError:
-                    errors.append(f'Row {row_num}: Caliber "{caliber}" is not numeric.')
-                    continue
+                # TARJA may come as a float (e.g. 2601304118.0) — strip decimal
+                tarja_str = str(int(tarja)) if isinstance(tarja, float) else str(tarja).strip()
 
-                drying_key = drying_map.get(str(drying).lower().strip()) if drying else None
+                # Caliber (SERIE) — may be None or "N/A"
+                cal_low = cal_high = None
+                if serie is not None:
+                    serie_str = str(serie).strip().upper()
+                    if serie_str not in ('', 'N/A', 'NONE', '-'):
+                        if '/' in serie_str:
+                            try:
+                                lo, hi = serie_str.split('/', 1)
+                                cal_low, cal_high = int(lo), int(hi)
+                            except ValueError:
+                                errors.append(f'Row {row_num}: Invalid SERIE "{serie}" — stored as N/A.')
+                        else:
+                            errors.append(f'Row {row_num}: SERIE "{serie}" not in XX/YY format — stored as N/A.')
+
+                # Drying method (SECADO)
+                drying_key = drying_map.get(str(secado).lower().strip()) if secado else None
                 if not drying_key:
-                    errors.append(f'Row {row_num}: Unknown drying method "{drying}" — skipped.')
+                    errors.append(f'Row {row_num}: Unknown SECADO "{secado}" — skipped.')
                     continue
 
-                bin_id_str = str(bin_id_val).strip()
-                if Bin.query.filter_by(bin_identifier=bin_id_str).first():
+                if Bin.query.filter_by(bin_identifier=tarja_str).first():
                     skipped += 1
                     continue
 
                 try:
                     db.session.add(Bin(
-                        bin_identifier=bin_id_str,
-                        producer_name=str(producer).strip() if producer else '',
-                        weight_kg=float(weight) if weight is not None else 0.0,
+                        bin_identifier=tarja_str,
+                        producer_name=str(productor).strip() if productor else '',
+                        weight_kg=float(neto) if neto is not None else 0.0,
                         drying_method=drying_key,
                         caliber_low=cal_low,
                         caliber_high=cal_high,
-                        notes=str(notes).strip() if notes else None,
                     ))
                     added += 1
                 except Exception as e:

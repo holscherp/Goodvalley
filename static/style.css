@@ -1,11 +1,61 @@
+/* ── Goodvalley brand colors ─────────────────────────────────────────────── */
+:root {
+  --gv-purple:       #4B1868;
+  --gv-purple-light: #6B2A8F;
+  --gv-purple-pale:  #f3eef8;
+  --gv-green:        #5CAD3E;
+  --gv-green-dark:   #4A9232;
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
 body {
   background-color: #f8f9fa;
 }
 
-.navbar-brand {
-  letter-spacing: 0.02em;
+/* ── Navbar ──────────────────────────────────────────────────────────────── */
+.navbar {
+  background-color: #ffffff !important;
+  border-bottom: 3px solid var(--gv-purple);
+  box-shadow: 0 2px 8px rgba(75, 24, 104, 0.10);
 }
 
+.navbar-brand img {
+  height: 38px;
+  width: auto;
+}
+
+.navbar .nav-link {
+  color: var(--gv-purple) !important;
+  font-weight: 500;
+}
+
+.navbar .nav-link:hover,
+.navbar .nav-link.active {
+  color: var(--gv-green) !important;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.btn-primary {
+  background-color: var(--gv-purple) !important;
+  border-color:     var(--gv-purple) !important;
+  color: #fff !important;
+}
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: var(--gv-purple-light) !important;
+  border-color:     var(--gv-purple-light) !important;
+}
+
+.btn-outline-primary {
+  color:        var(--gv-purple) !important;
+  border-color: var(--gv-purple) !important;
+}
+.btn-outline-primary:hover {
+  background-color: var(--gv-purple) !important;
+  color: #fff !important;
+}
+
+/* ── Cards ───────────────────────────────────────────────────────────────── */
 .card {
   border-radius: 0.5rem;
 }
@@ -15,19 +65,38 @@ body {
   padding: 0.85rem 1.25rem;
 }
 
+/* ── Tables ──────────────────────────────────────────────────────────────── */
 .table > :not(caption) > * > * {
   padding: 0.65rem 0.75rem;
 }
 
+/* ── Badges ──────────────────────────────────────────────────────────────── */
 .badge {
   font-weight: 500;
   letter-spacing: 0.02em;
 }
 
-/* Subtle green/yellow availability badges */
+/* Available / allocated bin badges */
+.badge-available {
+  background-color: #d8f0d0;
+  color: var(--gv-green-dark);
+  border: 1px solid #b5dfaa;
+}
+.badge-allocated {
+  background-color: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffe69c;
+}
+
+/* Status badges */
 .bg-success-subtle  { background-color: #d1e7dd !important; }
 .bg-warning-subtle  { background-color: #fff3cd !important; }
-.text-success       { color: #0a6640 !important; }
+.text-success       { color: var(--gv-green-dark) !important; }
 .text-warning       { color: #856404 !important; }
 .border-success-subtle { border-color: #a3cfbb !important; }
 .border-warning-subtle { border-color: #ffe69c !important; }
+
+/* ── Page headings ───────────────────────────────────────────────────────── */
+h2 {
+  color: var(--gv-purple);
+}

@@ -10,12 +10,14 @@
 </head>
 <body>
 
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+<nav class="navbar navbar-expand-lg">
   <div class="container">
-    <a class="navbar-brand fw-bold" href="{{ url_for('list_orders') }}">
-      <i class="bi bi-box-seam me-2"></i>Goodvalley
+    <a class="navbar-brand" href="{{ url_for('list_orders') }}">
+      <img src="{{ url_for('static', filename='logo.png') }}"
+           alt="Goodvalley"
+           onerror="this.replaceWith(document.createTextNode('Goodvalley'))">
     </a>
-    <div class="navbar-nav ms-3">
+    <div class="navbar-nav ms-4">
       <a class="nav-link {% if request.endpoint and 'order' in request.endpoint %}active{% endif %}"
          href="{{ url_for('list_orders') }}">
         <i class="bi bi-receipt me-1"></i>Sales Orders
