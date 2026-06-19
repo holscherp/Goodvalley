@@ -296,34 +296,53 @@ def create_app():
             flash(f'El archivo no es JSON válido: {e}', 'err')
             return redirect(url_for('index'))
 
-        added = skipped = 0
-        for b in bins_data:
-            bid = str(b.get('bin_identifier', '')).strip()
-            if not bid:
-                skipped += 1
-                continue
-            if Bin.query.filter_by(bin_identifier=bid).first():
-                skipped += 1
-                continue
-            drying = b.get('drying') or ''
-            if drying not in ('cancha', 'horno', 'termino_secado'):
-                skipped += 1
-                continue
-            db.session.add(Bin(
-                bin_identifier=bid,
-                producto=b.get('producto') or '',
-                caliber=b.get('caliber') or '',
-                drying=drying,
-                weight_kg=float(b.get('weight_kg') or 0),
-                humedad=b.get('humedad'),
-                contenedor=b.get('contenedor') or '',
-                producer_name=b.get('producer_name') or '',
-                temporada=b.get('temporada') or _temporada(bid),
-                status='available',
-            ))
-            added += 1
-        db.session.commit()
-        flash(f'Sync (subida) completo: {added} importados, {skipped} ya existían o sin secado.', 'ok')
+        try:
+            # One query for all existing identifiers — avoids N+1 timeout
+            existing = {
+                row[0] for row in
+                db.session.query(Bin.bin_identifier).all()
+            }
+
+            added = skipped = 0
+            batch = []
+            for b in bins_data:
+                bid = str(b.get('bin_identifier', '')).strip()
+                if not bid or bid in existing:
+                    skipped += 1
+                    continue
+                drying = b.get('drying') or ''
+                if drying not in ('cancha', 'horno', 'termino_secado'):
+                    skipped += 1
+                    continue
+                batch.append(Bin(
+                    bin_identifier=bid,
+                    producto=b.get('producto') or '',
+                    caliber=b.get('caliber') or '',
+                    drying=drying,
+                    weight_kg=float(b.get('weight_kg') or 0),
+                    humedad=b.get('humedad'),
+                    contenedor=b.get('contenedor') or '',
+                    producer_name=b.get('producer_name') or '',
+                    temporada=b.get('temporada') or _temporada(bid),
+                    status='available',
+                ))
+                existing.add(bid)
+                added += 1
+                # Commit in chunks to avoid memory buildup
+                if len(batch) >= 500:
+                    db.session.bulk_save_objects(batch)
+                    db.session.commit()
+                    batch = []
+
+            if batch:
+                db.session.bulk_save_objects(batch)
+                db.session.commit()
+
+            flash(f'Sync (subida) completo: {added} importados, {skipped} ya existían o sin secado.', 'ok')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al importar: {e}', 'err')
+
         return redirect(url_for('index'))
 
     # ── Bins ──────────────────────────────────────────────────────────────────
