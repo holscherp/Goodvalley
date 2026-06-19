@@ -19,7 +19,6 @@
         <form method="POST">
           <input type="hidden" name="url" value="{{ pw_url }}">
 
-          {{— Option A: paste session ID from browser —}}
           <div class="mb-4">
             <label class="form-label fw-semibold">
               Session ID <span class="badge bg-success ms-1">Recommended</span>
@@ -38,7 +37,6 @@
             <hr class="flex-grow-1 m-0"><span>or log in automatically</span><hr class="flex-grow-1 m-0">
           </div>
 
-          {{— Option B: username + password login —}}
           {% if pw_configured %}
           <div class="alert alert-success py-2 mb-3 small">
             <i class="bi bi-check-circle me-1"></i>
