@@ -1,87 +1,69 @@
 {% extends 'base.html' %}
-{% block title %}New Order — Goodvalley{% endblock %}
+{% block title %}Nueva Orden · Goodvalley{% endblock %}
+
+{% macro line_fields() %}
+<div class="fld">
+  <label>Calibre</label>
+  <select name="caliber">
+    <option value="">Cualquiera</option>
+    {% for c in CALIBER_OPTIONS %}
+      <option value="{{ c }}">{{ c }}</option>
+    {% endfor %}
+  </select>
+</div>
+<div class="fld">
+  <label>Secado</label>
+  <select name="drying">
+    <option value="">Cualquiera</option>
+    <option value="horno">Horno</option>
+    <option value="cancha">Cancha / Sol (campo)</option>
+    <option value="termino_secado">Término secado</option>
+  </select>
+</div>
+<div class="fld">
+  <label>Cantidad pedida (kg) *</label>
+  <input type="number" step="0.1" name="target_kg" required placeholder="2000">
+</div>
+<div class="fld">
+  <label>Humedad máx %</label>
+  <input type="number" step="0.1" name="max_humedad" placeholder="(opcional)">
+</div>
+<div class="fld">
+  <label>Temporada</label>
+  <input type="text" name="temporada" placeholder="(cualquiera)">
+</div>
+<div class="fld checkbox">
+  <label><input type="checkbox" name="pitted" value="1"> Sin carozo (deshuesado)</label>
+</div>
+{% endmacro %}
 
 {% block content %}
-<div class="mb-4">
-  <a href="{{ url_for('list_orders') }}" class="text-muted text-decoration-none">
-    <i class="bi bi-arrow-left me-1"></i>Back to Orders
-  </a>
-</div>
+<h1>Nueva orden de venta</h1>
+<p class="muted">Definí qué pide el cliente. La orden busca los bins que coinciden
+  con la descripción para que asignes bins reales sin venderlos dos veces.</p>
 
-<div class="row justify-content-center">
-  <div class="col-lg-6">
-    <div class="card shadow-sm">
-      <div class="card-header bg-white fw-semibold">
-        <i class="bi bi-receipt me-2"></i>New Sales Order
-      </div>
-      <div class="card-body">
-        <form method="POST">
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Buyer Name / Company <span class="text-danger">*</span></label>
-            <input type="text" name="buyer_name" class="form-control"
-                   value="{{ request.form.get('buyer_name', '') }}"
-                   placeholder="e.g. Acme Foods Ltd." required>
-          </div>
-
-          <hr class="my-3">
-          <p class="text-muted small mb-3">
-            Order requirements (used to pre-fill the bin search — can be changed later).
-          </p>
-
-          <div class="row">
-            <div class="col-6">
-              <label class="form-label fw-semibold">Caliber From</label>
-              <select name="req_caliber_low" class="form-select">
-                <option value="">Any</option>
-                {% for lo, hi in CALIBER_OPTIONS %}
-                  <option value="{{ lo }}"
-                    {% if request.form.get('req_caliber_low') == lo|string %}selected{% endif %}>
-                    {{ lo }}/{{ hi }}
-                  </option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-6">
-              <label class="form-label fw-semibold">Caliber To</label>
-              <select name="req_caliber_high" class="form-select">
-                <option value="">Any</option>
-                {% for lo, hi in CALIBER_OPTIONS %}
-                  <option value="{{ hi }}"
-                    {% if request.form.get('req_caliber_high') == hi|string %}selected{% endif %}>
-                    {{ lo }}/{{ hi }}
-                  </option>
-                {% endfor %}
-              </select>
-            </div>
-          </div>
-
-          <div class="mb-3 mt-3">
-            <label class="form-label fw-semibold">Drying Method</label>
-            <select name="req_drying_method" class="form-select">
-              <option value="">Any</option>
-              {% for key, label in DRYING_METHODS.items() %}
-                <option value="{{ key }}"
-                  {% if request.form.get('req_drying_method') == key %}selected{% endif %}>
-                  {{ label }}
-                </option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="mb-4">
-            <label class="form-label fw-semibold">Notes</label>
-            <textarea name="notes" class="form-control" rows="3"
-                      placeholder="Optional">{{ request.form.get('notes', '') }}</textarea>
-          </div>
-
-          <div class="d-grid">
-            <button type="submit" class="btn btn-primary btn-lg">
-              Create Order
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+<form class="card-form" method="post" action="{{ url_for('create_order') }}">
+  <h3>Cliente</h3>
+  <div class="fld grow">
+    <label>Cliente *</label>
+    <input type="text" name="customer" required placeholder="Nombre del comprador">
   </div>
-</div>
+  <div class="fld grow">
+    <label>Referencia / PO</label>
+    <input type="text" name="reference" placeholder="(opcional)">
+  </div>
+
+  <h3>Primera línea de pedido</h3>
+  {{ line_fields() }}
+
+  <div class="fld grow">
+    <label>Notas</label>
+    <input type="text" name="notes" placeholder="(opcional)">
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary">Crear orden</button>
+    <a class="btn btn-ghost" href="{{ url_for('list_orders') }}">Cancelar</a>
+  </div>
+</form>
 {% endblock %}

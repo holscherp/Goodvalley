@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block title %}Resumen · Goodvalley{% endblock %}
+
+{% block content %}
+<h1>Resumen</h1>
+
+<div class="cards">
+  <div class="card"><div class="big">{{ total }}</div><div class="lbl">Bins de ciruela</div></div>
+  <div class="card ok"><div class="big">{{ avail }}</div><div class="lbl">Disponibles</div></div>
+  <div class="card"><div class="big">{{ "{:,.1f}".format(kg) }}</div><div class="lbl">kg disponibles</div></div>
+  <div class="card warn"><div class="big">{{ alloc_n }}</div><div class="lbl">Asignados a órdenes</div></div>
+  <div class="card"><div class="big">{{ n_open }}</div><div class="lbl">Órdenes abiertas</div></div>
+</div>
+
+<div class="row-between">
+  <h2>Stock disponible por calibre y secado</h2>
+  <a class="btn btn-primary" href="{{ url_for('new_order') }}">+ Nueva orden de venta</a>
+</div>
+<p class="muted">
+  Bins disponibles, agrupados por calibre y método de secado.
+  Sirve para identificar excedente y asignarlo a órdenes.
+</p>
+
+{% if summary_rows %}
+<table class="grid">
+  <thead><tr>
+    <th>Calibre</th><th>Secado</th>
+    <th class="num">Bins</th><th class="num">kg disponibles</th><th></th>
+  </tr></thead>
+  <tbody>
+  {% for caliber, drying, cnt, kg in summary_rows %}
+    <tr>
+      <td><strong>{{ caliber }}</strong></td>
+      <td>
+        <span class="pill pill-{{ drying }}">
+          {% if drying == 'cancha' %}Cancha / Sol (field)
+          {% elif drying == 'horno' %}Horno (kiln)
+          {% elif drying == 'termino_secado' %}Término secado (finishing)
+          {% else %}{{ drying }}{% endif %}
+        </span>
+      </td>
+      <td class="num">{{ cnt }}</td>
+      <td class="num">{{ "{:,.1f}".format(kg or 0) }}</td>
+      <td>
+        <a class="mini" href="{{ url_for('list_bins', caliber=caliber, drying=drying, status='available') }}">ver bins →</a>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">
+  <p>No hay bins disponibles aún. Usá <strong>↻ Sync (archivo)</strong> o <strong>⚡ Sync en vivo</strong> para importar.</p>
+</div>
+{% endif %}
+{% endblock %}

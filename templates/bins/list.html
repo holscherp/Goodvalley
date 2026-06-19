@@ -1,75 +1,104 @@
 {% extends 'base.html' %}
-{% block title %}Bin Inventory — Goodvalley{% endblock %}
+{% block title %}Inventario de Bins · Goodvalley{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <h2 class="mb-0">Bin Inventory</h2>
-  <div class="d-flex gap-2">
-    <a href="{{ url_for('new_bin') }}" class="btn btn-primary">
-      <i class="bi bi-plus-lg me-1"></i>Add Bin
-    </a>
+<h1>Inventario de Bins · Ciruela</h1>
+
+<form class="filters" method="get" action="{{ url_for('list_bins') }}">
+  <div class="fld">
+    <label>Calibre</label>
+    <select name="caliber">
+      <option value="">Todos</option>
+      {% for c in CALIBER_OPTIONS %}
+        <option value="{{ c }}" {{ 'selected' if q_caliber == c }}>{{ c }}</option>
+      {% endfor %}
+    </select>
   </div>
-</div>
+  <div class="fld">
+    <label>Secado</label>
+    <select name="drying">
+      <option value="">Todos</option>
+      <option value="horno"          {{ 'selected' if q_drying == 'horno' }}>Horno</option>
+      <option value="cancha"         {{ 'selected' if q_drying == 'cancha' }}>Cancha / Sol</option>
+      <option value="termino_secado" {{ 'selected' if q_drying == 'termino_secado' }}>Término secado</option>
+    </select>
+  </div>
+  <div class="fld">
+    <label>Estado</label>
+    <select name="status">
+      <option value="">Todos</option>
+      <option value="available" {{ 'selected' if q_status == 'available' }}>available</option>
+      <option value="allocated" {{ 'selected' if q_status == 'allocated' }}>allocated</option>
+      <option value="shipped"   {{ 'selected' if q_status == 'shipped' }}>shipped</option>
+      <option value="gone"      {{ 'selected' if q_status == 'gone' }}>gone</option>
+    </select>
+  </div>
+  <div class="fld">
+    <label>Temporada</label>
+    <select name="temporada">
+      <option value="">Todas</option>
+      {% for t in temporadas %}
+        <option value="{{ t }}" {{ 'selected' if q_temporada == t }}>{{ t }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="fld grow">
+    <label>Productor</label>
+    <select name="grower">
+      <option value="">Todos</option>
+      {% for g in growers %}
+        <option value="{{ g }}" {{ 'selected' if q_grower == g }}>{{ g }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="fld grow">
+    <label>Buscar (tarja / producto)</label>
+    <input type="text" name="q" value="{{ q_text }}" placeholder="ej. 23013…">
+  </div>
+  <div class="fld">
+    <label>&nbsp;</label>
+    <button class="btn btn-primary">Filtrar</button>
+  </div>
+  <div class="fld">
+    <label>&nbsp;</label>
+    <a class="btn btn-ghost" href="{{ url_for('list_bins') }}">Limpiar</a>
+  </div>
+</form>
+
+<p class="muted result-line">
+  Mostrando <strong>{{ bins | length }}</strong> de <strong>{{ total_count }}</strong> bins ·
+  <strong>{{ "{:,.1f}".format(total_kg) }}</strong> kg
+  {% if bins | length == 500 %} · (límite 500 — refiná el filtro){% endif %}
+</p>
 
 {% if bins %}
-<div class="card shadow-sm">
-  <div class="card-header bg-white d-flex justify-content-between align-items-center">
-    <span class="text-muted small">{{ bins | length }} bin(s) total</span>
-    <span class="text-muted small">
-      {{ bins | selectattr('is_available') | list | length }} available &nbsp;·&nbsp;
-      {{ bins | rejectattr('is_available') | list | length }} allocated
-    </span>
-  </div>
-  <table class="table table-hover mb-0">
-    <thead class="table-light">
-      <tr>
-        <th>Bin ID</th>
-        <th>Producer</th>
-        <th>Caliber</th>
-        <th>Drying</th>
-        <th class="text-end">Weight (kg)</th>
-        <th>Status</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for bin in bins %}
-      <tr>
-        <td class="fw-semibold">{{ bin.bin_identifier }}</td>
-        <td>{{ bin.producer_name }}</td>
-        <td>{{ bin.caliber_label }}</td>
-        <td>{{ DRYING_METHODS[bin.drying_method] }}</td>
-        <td class="text-end">{{ bin.weight_kg }}</td>
-        <td>
-          {% if bin.is_available %}
-            <span class="badge bg-success-subtle text-success border border-success-subtle">
-              Available
-            </span>
-          {% else %}
-            <a href="{{ url_for('order_detail', order_id=bin.allocation.order_id) }}"
-               class="badge bg-warning-subtle text-warning border border-warning-subtle text-decoration-none">
-              Order #{{ bin.allocation.order_id }} — {{ bin.allocation.order.buyer_name }}
-            </a>
-          {% endif %}
-        </td>
-        <td class="text-end">
-          <a href="{{ url_for('edit_bin', bin_id=bin.id) }}"
-             class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-pencil"></i>
-          </a>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+<table class="grid">
+  <thead><tr>
+    <th>Tarja</th><th>Producto</th><th>Calibre</th><th>Secado</th>
+    <th class="num">kg</th><th class="num">Hum %</th>
+    <th>Productor</th><th>Temp.</th><th>Estado</th>
+  </tr></thead>
+  <tbody>
+  {% for b in bins %}
+    <tr class="st-{{ b.status }}">
+      <td class="mono">{{ b.bin_identifier }}</td>
+      <td>{{ b.producto or '—' }}</td>
+      <td>{{ b.caliber or 'N/A' }}</td>
+      <td>
+        {% if b.drying %}
+          <span class="pill pill-{{ b.drying }}">{{ b.drying_label }}</span>
+        {% else %}—{% endif %}
+      </td>
+      <td class="num">{{ b.weight_kg }}</td>
+      <td class="num">{{ b.humedad if b.humedad is not none else '—' }}</td>
+      <td>{{ b.producer_name or '—' }}</td>
+      <td>{{ b.temporada or '—' }}</td>
+      <td><span class="badge badge-{{ b.status }}">{{ b.status }}</span></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
 {% else %}
-<div class="text-center py-5 text-muted">
-  <i class="bi bi-archive display-4 d-block mb-3"></i>
-  <p class="mb-2">No bins in the system yet.</p>
-  <a href="{{ url_for('new_bin') }}" class="btn btn-outline-primary">
-    <i class="bi bi-plus-lg me-1"></i>Add manually
-  </a>
-</div>
+<div class="empty">No hay bins que coincidan con el filtro.</div>
 {% endif %}
 {% endblock %}

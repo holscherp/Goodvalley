@@ -1,70 +1,141 @@
 from datetime import datetime
 from db import db
+import re as _re
+
+_CALIBER_RE = _re.compile(r'(\d{2,3}/\d{2,3}|\d{2,3}\+)')
+
+CALIBER_OPTIONS = [
+    '20/30','30/40','40/50','50/60','60/70','70/80',
+    '80/90','90/100','100/120','120/144','144/170','170+',
+]
+
+DRYING_LABELS = {
+    'cancha':         'Cancha / Sol (field)',
+    'horno':          'Horno (kiln)',
+    'termino_secado': 'Término secado (finishing)',
+}
+
+
+def _parse_producto(producto):
+    """Return (caliber_str, drying_key) from the PRODUCTO field."""
+    p = (producto or '').strip().upper()
+    if 'TERM' in p:
+        drying = 'termino_secado'
+    elif 'HORNO' in p:
+        drying = 'horno'
+    elif 'SOL' in p or 'CANCHA' in p or 'CAMPO' in p:
+        drying = 'cancha'
+    else:
+        drying = None
+    m = _CALIBER_RE.search(p)
+    caliber = m.group(1) if m else None
+    return caliber, drying
 
 
 class Bin(db.Model):
     __tablename__ = 'bins'
 
-    id = db.Column(db.Integer, primary_key=True)
-    bin_identifier = db.Column(db.String, unique=True, nullable=False)
-    producer_name = db.Column(db.String, nullable=False)
-    weight_kg = db.Column(db.Numeric(10, 2), nullable=False)
-    drying_method = db.Column(db.String, nullable=False)  # 'oven', 'field', 'other'
-    caliber_low = db.Column(db.Integer, nullable=True)
-    caliber_high = db.Column(db.Integer, nullable=True)
-    notes = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    id            = db.Column(db.Integer, primary_key=True)
+    bin_identifier = db.Column(db.String(50), unique=True, nullable=False)
+    producto      = db.Column(db.String(200), nullable=True)
+    caliber       = db.Column(db.String(20),  nullable=True)
+    drying        = db.Column(db.String(30),  nullable=True)
+    weight_kg     = db.Column(db.Float, default=0.0)
+    humedad       = db.Column(db.Float, nullable=True)
+    contenedor    = db.Column(db.String(100), nullable=True)
+    producer_name = db.Column(db.String(200), default='')
+    temporada     = db.Column(db.String(10),  nullable=True)
+    status        = db.Column(db.String(20),  default='available')
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
 
-    allocation = db.relationship('OrderBin', back_populates='bin', uselist=False)
+    allocation = db.relationship('Allocation', backref='bin', uselist=False)
 
     @property
     def is_available(self):
-        return self.allocation is None
+        return self.status == 'available'
 
     @property
     def caliber_label(self):
-        if self.caliber_low is None or self.caliber_high is None:
-            return 'N/A'
-        return f'{self.caliber_low}/{self.caliber_high}'
+        return self.caliber or 'N/A'
+
+    @property
+    def drying_label(self):
+        return DRYING_LABELS.get(self.drying, self.drying or '—')
 
 
 class Order(db.Model):
     __tablename__ = 'orders'
 
-    id = db.Column(db.Integer, primary_key=True)
-    buyer_name = db.Column(db.String, nullable=False)
-    status = db.Column(db.String, nullable=False, default='draft')
-    req_caliber_low = db.Column(db.Integer)
-    req_caliber_high = db.Column(db.Integer)
-    req_drying_method = db.Column(db.String)
-    notes = db.Column(db.Text)
+    id         = db.Column(db.Integer, primary_key=True)
+    customer   = db.Column(db.String(200), nullable=False)
+    reference  = db.Column(db.String(100), nullable=True)
+    status     = db.Column(db.String(20),  default='open')
+    notes      = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    order_bins = db.relationship('OrderBin', back_populates='order', cascade='all, delete-orphan')
-
-    @property
-    def allocated_bins(self):
-        return [ob.bin for ob in self.order_bins]
-
-    @property
-    def total_weight(self):
-        return sum(float(ob.bin.weight_kg) for ob in self.order_bins)
-
-
-class OrderBin(db.Model):
-    __tablename__ = 'order_bins'
-
-    id = db.Column(db.Integer, primary_key=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=False)
-    bin_id = db.Column(db.Integer, db.ForeignKey('bins.id'), nullable=False)
-    allocated_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    # This UNIQUE constraint is the bin lock — enforced by the database itself.
-    # Any attempt to insert a bin_id that already exists here raises IntegrityError.
-    __table_args__ = (
-        db.UniqueConstraint('bin_id', name='uq_order_bins_bin_id'),
+    lines = db.relationship(
+        'OrderLine', backref='order',
+        cascade='all, delete-orphan', lazy='select',
     )
 
-    order = db.relationship('Order', back_populates='order_bins')
-    bin = db.relationship('Bin', back_populates='allocation')
+    @property
+    def allocated_kg(self):
+        return sum(line.allocated_kg for line in self.lines)
+
+    @property
+    def target_kg(self):
+        return sum(line.target_kg for line in self.lines)
+
+
+class OrderLine(db.Model):
+    __tablename__ = 'order_lines'
+
+    id          = db.Column(db.Integer, primary_key=True)
+    order_id    = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=False)
+    caliber     = db.Column(db.String(20),  nullable=True)
+    drying      = db.Column(db.String(30),  nullable=True)
+    target_kg   = db.Column(db.Float, nullable=False)
+    max_humedad = db.Column(db.Float, nullable=True)
+    temporada   = db.Column(db.String(10),  nullable=True)
+    pitted      = db.Column(db.Boolean, default=False)
+    notes       = db.Column(db.String(200), nullable=True)
+
+    allocations = db.relationship(
+        'Allocation', backref='line',
+        cascade='all, delete-orphan',
+    )
+
+    @property
+    def allocated_kg(self):
+        return sum(a.bin.weight_kg or 0 for a in self.allocations if a.bin)
+
+    @property
+    def pct(self):
+        if self.target_kg:
+            return min(100, round(self.allocated_kg / self.target_kg * 100))
+        return 0
+
+    @property
+    def satisfied(self):
+        return self.allocated_kg >= self.target_kg
+
+    @property
+    def spec_label(self):
+        parts = []
+        if self.caliber:
+            parts.append(self.caliber)
+        if self.drying:
+            parts.append(DRYING_LABELS.get(self.drying, self.drying))
+        return ' · '.join(parts) if parts else 'Cualquier calibre/secado'
+
+
+class Allocation(db.Model):
+    __tablename__ = 'allocations'
+
+    id         = db.Column(db.Integer, primary_key=True)
+    order_id   = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=False)
+    line_id    = db.Column(db.Integer, db.ForeignKey('order_lines.id'), nullable=False)
+    bin_id     = db.Column(db.Integer, db.ForeignKey('bins.id'),   nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (db.UniqueConstraint('bin_id', name='uq_alloc_bin_id'),)

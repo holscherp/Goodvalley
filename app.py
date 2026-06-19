@@ -10,31 +10,13 @@ PWAREHOUSE_URL  = os.environ.get('PWAREHOUSE_URL',  'http://190.211.168.247:8077
 PWAREHOUSE_RUT  = os.environ.get('PWAREHOUSE_RUT',  '')
 PWAREHOUSE_PASS = os.environ.get('PWAREHOUSE_PASS', '')
 
-DRYING_METHODS = {
-    'oven': 'Oven Drying',
-    'field': 'Field Drying',
-    'other': 'Other',
-}
-
-CALIBER_OPTIONS = [
-    (40, 50), (50, 60), (60, 70), (70, 80), (80, 90), (90, 100),
-]
-
-STATUS_BADGE = {
-    'draft':     'secondary',
-    'confirmed': 'primary',
-    'shipped':   'info',
-    'closed':    'success',
-    'cancelled': 'danger',
-}
-
-# Which transitions are allowed from each status
-STATUS_TRANSITIONS = {
-    'draft':     ['confirmed', 'cancelled'],
-    'confirmed': ['shipped',   'cancelled'],
-    'shipped':   ['closed',    'cancelled'],
-    'closed':    [],
-    'cancelled': [],
+DRYING_MAP = {
+    'cancha': 'cancha', 'cancha de sol': 'cancha', 'sol': 'cancha',
+    'campo': 'cancha', 'field': 'cancha', 'field drying': 'cancha',
+    'horno': 'horno', 'oven': 'horno', 'oven drying': 'horno',
+    'termino secado': 'termino_secado', 'término secado': 'termino_secado',
+    'termino_secado': 'termino_secado', 'term. secado': 'termino_secado',
+    'term.secado': 'termino_secado',
 }
 
 
@@ -52,265 +34,51 @@ def create_app():
     db.init_app(app)
 
     with app.app_context():
-        from models import Bin, Order, OrderBin  # noqa: F401
+        from models import Bin, Order, OrderLine, Allocation  # noqa: F401
         db.create_all()
-        # Migration: allow caliber columns to be null (handles pre-existing tables)
-        try:
-            with db.engine.connect() as conn:
-                conn.execute(db.text('ALTER TABLE bins ALTER COLUMN caliber_low DROP NOT NULL'))
-                conn.execute(db.text('ALTER TABLE bins ALTER COLUMN caliber_high DROP NOT NULL'))
-                conn.commit()
-        except Exception:
-            pass
 
-    @app.context_processor
-    def inject_constants():
-        return dict(
-            DRYING_METHODS=DRYING_METHODS,
-            CALIBER_OPTIONS=CALIBER_OPTIONS,
-            STATUS_BADGE=STATUS_BADGE,
-            STATUS_TRANSITIONS=STATUS_TRANSITIONS,
-        )
+        _migrate(db)
 
-    # ── ORDERS ────────────────────────────────────────────────────────────────
+    # ── Routes ────────────────────────────────────────────────────────────────
 
     @app.route('/')
     def index():
-        return redirect(url_for('list_orders'))
+        from models import Bin, Order, Allocation
+        from sqlalchemy import func
 
-    @app.route('/orders')
-    def list_orders():
-        from models import Order
-        orders = Order.query.order_by(Order.created_at.desc()).all()
-        return render_template('orders/list.html', orders=orders)
+        total   = Bin.query.count()
+        avail   = Bin.query.filter_by(status='available').count()
+        kg      = db.session.query(func.sum(Bin.weight_kg)).filter_by(status='available').scalar() or 0
+        n_open  = Order.query.filter(Order.status.in_(['open', 'confirmed'])).count()
+        alloc_n = Allocation.query.count()
 
-    @app.route('/orders/new', methods=['GET', 'POST'])
-    def new_order():
-        if request.method == 'POST':
-            from models import Order
-            buyer = request.form.get('buyer_name', '').strip()
-            if not buyer:
-                flash('Buyer name is required.', 'danger')
-                return render_template('orders/new.html')
-
-            cal_low  = request.form.get('req_caliber_low')  or None
-            cal_high = request.form.get('req_caliber_high') or None
-            drying   = request.form.get('req_drying_method') or None
-
-            order = Order(
-                buyer_name=buyer,
-                req_caliber_low=int(cal_low)   if cal_low  else None,
-                req_caliber_high=int(cal_high) if cal_high else None,
-                req_drying_method=drying,
-                notes=request.form.get('notes', '').strip() or None,
+        # Summary by caliber + drying (available bins only)
+        rows = (
+            db.session.query(
+                Bin.caliber, Bin.drying,
+                func.count(Bin.id).label('cnt'),
+                func.sum(Bin.weight_kg).label('kg'),
             )
-            db.session.add(order)
-            db.session.commit()
-            flash('Order created.', 'success')
-            return redirect(url_for('order_detail', order_id=order.id))
-
-        return render_template('orders/new.html')
-
-    @app.route('/orders/<int:order_id>')
-    def order_detail(order_id):
-        from models import Order, Bin, OrderBin
-
-        order = Order.query.get_or_404(order_id)
-
-        # Search params — fall back to order's saved requirements
-        cal_low  = request.args.get('caliber_low',    order.req_caliber_low)
-        cal_high = request.args.get('caliber_high',   order.req_caliber_high)
-        drying   = request.args.get('drying_method',  order.req_drying_method)
-        searched = 'search' in request.args
-
-        search_results = []
-        if searched:
-            # IDs of every bin currently locked to any order
-            locked_ids = {row[0] for row in db.session.query(OrderBin.bin_id).all()}
-
-            query = Bin.query
-            if locked_ids:
-                query = query.filter(Bin.id.notin_(locked_ids))
-
-            try:
-                if cal_low and cal_high:
-                    query = query.filter(
-                        Bin.caliber_low  >= int(cal_low),
-                        Bin.caliber_high <= int(cal_high),
-                    )
-                if drying:
-                    query = query.filter(Bin.drying_method == drying)
-            except (ValueError, TypeError):
-                flash('Invalid search parameters.', 'danger')
-
-            search_results = query.order_by(Bin.bin_identifier).all()
-
-        return render_template(
-            'orders/detail.html',
-            order=order,
-            search_results=search_results,
-            searched=searched,
-            cal_low=cal_low,
-            cal_high=cal_high,
-            drying=drying,
+            .filter_by(status='available')
+            .filter(Bin.caliber.isnot(None))
+            .group_by(Bin.caliber, Bin.drying)
+            .order_by(Bin.caliber, Bin.drying)
+            .all()
         )
 
-    @app.route('/orders/<int:order_id>/allocate', methods=['POST'])
-    def allocate_bins(order_id):
-        from models import Order, OrderBin
+        return render_template('index.html',
+            total=total, avail=avail, kg=round(kg, 1),
+            n_open=n_open, alloc_n=alloc_n, summary_rows=rows,
+        )
 
-        order = Order.query.get_or_404(order_id)
-
-        if order.status in ('shipped', 'closed', 'cancelled'):
-            flash(f'Cannot allocate bins to an order with status "{order.status}".', 'danger')
-            return redirect(url_for('order_detail', order_id=order_id))
-
-        bin_ids = request.form.getlist('bin_ids')
-        if not bin_ids:
-            flash('No bins selected.', 'warning')
-            return redirect(url_for('order_detail', order_id=order_id))
-
-        try:
-            for bid in bin_ids:
-                db.session.add(OrderBin(order_id=order_id, bin_id=int(bid)))
-            db.session.commit()
-            flash(f'{len(bin_ids)} bin(s) allocated to this order.', 'success')
-        except IntegrityError:
-            db.session.rollback()
-            flash(
-                'One or more selected bins were just allocated by another user. '
-                'Refresh the page and try again.',
-                'danger',
-            )
-
-        return redirect(url_for('order_detail', order_id=order_id))
-
-    @app.route('/orders/<int:order_id>/deallocate/<int:bin_id>', methods=['POST'])
-    def deallocate_bin(order_id, bin_id):
-        from models import Order, OrderBin
-
-        order = Order.query.get_or_404(order_id)
-
-        if order.status in ('shipped', 'closed'):
-            flash('Cannot remove bins from a shipped or closed order.', 'danger')
-            return redirect(url_for('order_detail', order_id=order_id))
-
-        ob = OrderBin.query.filter_by(order_id=order_id, bin_id=bin_id).first_or_404()
-        db.session.delete(ob)
-        db.session.commit()
-        flash('Bin removed from this order and returned to available inventory.', 'success')
-        return redirect(url_for('order_detail', order_id=order_id))
-
-    @app.route('/orders/<int:order_id>/status', methods=['POST'])
-    def update_order_status(order_id):
-        from models import Order, OrderBin
-
-        order = Order.query.get_or_404(order_id)
-        new_status = request.form.get('status')
-
-        if new_status not in STATUS_TRANSITIONS.get(order.status, []):
-            flash(f'Cannot change status from "{order.status}" to "{new_status}".', 'danger')
-            return redirect(url_for('order_detail', order_id=order_id))
-
-        if new_status == 'cancelled':
-            count = OrderBin.query.filter_by(order_id=order_id).delete()
-            flash(
-                f'Order cancelled. {count} bin(s) released back to available inventory.',
-                'warning',
-            )
-
-        order.status = new_status
-        order.updated_at = datetime.utcnow()
-        db.session.commit()
-
-        if new_status != 'cancelled':
-            flash(f'Order status updated to "{new_status}".', 'success')
-
-        return redirect(url_for('order_detail', order_id=order_id))
-
-    @app.route('/orders/<int:order_id>/delete', methods=['POST'])
-    def delete_order(order_id):
-        from models import Order
-
-        order = Order.query.get_or_404(order_id)
-
-        if order.status not in ('cancelled', 'closed'):
-            flash('Only cancelled or closed orders can be deleted.', 'danger')
-            return redirect(url_for('list_orders'))
-
-        db.session.delete(order)
-        db.session.commit()
-        flash(f'Order #{order_id} deleted.', 'success')
-        return redirect(url_for('list_orders'))
-
-    # ── BINS ──────────────────────────────────────────────────────────────────
-
-    @app.route('/bins')
-    def list_bins():
-        from models import Bin
-        bins = Bin.query.order_by(Bin.bin_identifier).all()
-        return render_template('bins/list.html', bins=bins)
-
-    @app.route('/bins/new', methods=['GET', 'POST'])
-    def new_bin():
-        if request.method == 'POST':
-            from models import Bin
-            try:
-                b = Bin(
-                    bin_identifier=request.form['bin_identifier'].strip(),
-                    producer_name=request.form['producer_name'].strip(),
-                    weight_kg=float(request.form['weight_kg']),
-                    drying_method=request.form['drying_method'],
-                    caliber_low=int(request.form['caliber_low']),
-                    caliber_high=int(request.form['caliber_high']),
-                    notes=request.form.get('notes', '').strip() or None,
-                )
-                db.session.add(b)
-                db.session.commit()
-                flash(f'Bin {b.bin_identifier} added.', 'success')
-                return redirect(url_for('list_bins'))
-            except IntegrityError:
-                db.session.rollback()
-                flash('A bin with that ID already exists.', 'danger')
-            except ValueError as e:
-                flash(f'Invalid value: {e}', 'danger')
-
-        return render_template('bins/new.html')
-
-    @app.route('/bins/<int:bin_id>/edit', methods=['GET', 'POST'])
-    def edit_bin(bin_id):
-        from models import Bin
-        b = Bin.query.get_or_404(bin_id)
-
-        if request.method == 'POST':
-            try:
-                b.producer_name = request.form['producer_name'].strip()
-                b.weight_kg     = float(request.form['weight_kg'])
-                b.drying_method = request.form['drying_method']
-                b.caliber_low   = int(request.form['caliber_low'])
-                b.caliber_high  = int(request.form['caliber_high'])
-                b.notes         = request.form.get('notes', '').strip() or None
-                db.session.commit()
-                flash('Bin updated.', 'success')
-                return redirect(url_for('list_bins'))
-            except ValueError as e:
-                db.session.rollback()
-                flash(f'Invalid value: {e}', 'danger')
-
-        return render_template('bins/edit.html', bin=b)
+    # ── Sync ──────────────────────────────────────────────────────────────────
 
     @app.route('/sync', methods=['POST'])
     def sync():
-        import json as _json
-        import os as _os
-        import re as _re
-        from models import Bin
+        import json as _json, os as _os, re as _re
+        from models import Bin, _parse_producto
 
-        _DRYING_MAP = {
-            'cancha': 'field', 'field drying': 'field', 'field': 'field',
-            'horno': 'oven',   'oven drying':  'oven',  'oven':  'oven',
-            'otro':  'other',  'other':         'other',
-        }
+        _DRYING_MAP = dict(DRYING_MAP)
 
         def _parse_js(text):
             try:
@@ -322,24 +90,42 @@ def create_app():
         def _rv(row, i):
             return row.get(i) or row.get(str(i))
 
+        def _temporada(t):
+            if len(t) >= 8:
+                try:
+                    p = int(t[:2])
+                    if 18 <= p <= 35:
+                        return str(2000 + p)
+                except ValueError:
+                    pass
+            return None
+
         def _do_import(bins_data):
             added = skipped = 0
             for b in bins_data:
                 bid = str(b.get('bin_identifier', '')).strip()
-                if not bid or Bin.query.filter_by(bin_identifier=bid).first():
+                if not bid:
                     skipped += 1
                     continue
-                drying = b.get('drying_method', '')
-                if drying not in ('field', 'oven', 'other'):
+                exists = Bin.query.filter_by(bin_identifier=bid).first()
+                if exists:
+                    skipped += 1
+                    continue
+                drying = b.get('drying') or b.get('drying_method', '')
+                if drying not in ('cancha', 'horno', 'termino_secado'):
                     skipped += 1
                     continue
                 db.session.add(Bin(
                     bin_identifier=bid,
-                    producer_name=b.get('producer_name', ''),
+                    producto=b.get('producto') or b.get('product') or '',
+                    caliber=b.get('caliber') or b.get('caliber_str') or '',
+                    drying=drying,
                     weight_kg=float(b.get('weight_kg') or 0),
-                    drying_method=drying,
-                    caliber_low=b.get('caliber_low'),
-                    caliber_high=b.get('caliber_high'),
+                    humedad=b.get('humedad') or b.get('humidity'),
+                    contenedor=b.get('contenedor') or b.get('container', ''),
+                    producer_name=b.get('producer_name', ''),
+                    temporada=b.get('temporada') or _temporada(bid),
+                    status='available',
                 ))
                 added += 1
             db.session.commit()
@@ -351,13 +137,13 @@ def create_app():
             if not live:
                 dump_path = _os.path.join(_os.path.dirname(__file__), 'data_dump', 'bins.json')
                 if not _os.path.exists(dump_path):
-                    flash('data_dump/bins.json not found. Place the export file there and redeploy.', 'danger')
-                    return redirect(url_for('list_bins'))
+                    flash('data_dump/bins.json no encontrado. Coloca el archivo y vuelve a hacer deploy.', 'err')
+                    return redirect(url_for('index'))
                 with open(dump_path) as f:
                     bins_data = _json.load(f)
                 added, skipped = _do_import(bins_data)
-                flash(f'File sync complete: {added} imported, {skipped} already existed.', 'success')
-                return redirect(url_for('list_bins'))
+                flash(f'Sync (archivo) completo: {added} importados, {skipped} ya existían.', 'ok')
+                return redirect(url_for('index'))
 
             # — Live sync from pWarehouse8 —
             import requests as _req
@@ -365,8 +151,8 @@ def create_app():
             rut = PWAREHOUSE_RUT
             pw  = PWAREHOUSE_PASS
             if not rut or not pw:
-                flash('Set PWAREHOUSE_RUT and PWAREHOUSE_PASS in Railway Variables for live sync.', 'danger')
-                return redirect(url_for('list_bins'))
+                flash('Configurá PWAREHOUSE_RUT y PWAREHOUSE_PASS en las variables de Railway.', 'err')
+                return redirect(url_for('index'))
 
             sess = _req.Session()
             sess.headers['User-Agent'] = 'Mozilla/5.0 (compatible; Goodvalley-Sync/1.0)'
@@ -383,12 +169,15 @@ def create_app():
                     sid = m.group(1)
                     break
             if not sid:
-                raise ValueError("Could not find _S_ID in pWarehouse8 login page.")
+                raise ValueError("No se encontró _S_ID en la página de pWarehouse8.")
 
-            fp = '&O16= \x02\x02' + rut + '&O17= \x02\x02' + pw
+            # _fp_ must be EMPTY; O16/O17 are sent as separate POST fields
             sess.post(url + '/HandleEvent', data={
                 'Ajax': '1', 'IsEvent': '1', 'Obj': 'O23', 'Evt': 'click',
-                'this': 'O23', '_S_ID': sid, '_fp_': fp, '_seq_': 'a', '_uo_': 'O0',
+                'this': 'O23', '_S_ID': sid, '_fp_': '',
+                'O16': ' \x02\x02' + rut,
+                'O17': ' \x02\x02' + pw,
+                '_seq_': 'a', '_uo_': 'O0',
             }, timeout=30)
 
             all_rows, start, total, page_size = [], 0, None, 2000
@@ -413,49 +202,381 @@ def create_app():
 
             bins_data = []
             for row in all_rows:
-                if 'CIRUELA' not in str(_rv(row, 8) or '').upper():
+                producto = str(_rv(row, 8) or '').strip()
+                if 'CIRUELA' not in producto.upper():
                     continue
+
                 tarja = _rv(row, 1)
                 if tarja is None:
                     continue
                 tarja_str = str(int(float(tarja))) if isinstance(tarja, (int, float)) else str(tarja).strip()
+
                 neto = _rv(row, 2)
                 try:
                     weight = float(neto) if neto is not None else 0.0
                 except Exception:
                     weight = 0.0
-                cal_low = cal_high = None
+
+                # Caliber from SERIE col or PRODUCTO
+                caliber = None
                 serie = _rv(row, 15)
-                if serie and '/' in str(serie):
-                    try:
-                        lo, hi = str(serie).strip().upper().split('/', 1)
-                        cal_low, cal_high = int(lo.strip()), int(hi.strip())
-                    except Exception:
-                        pass
+                if serie:
+                    s = str(serie).strip()
+                    import re as _reb
+                    m = _reb.search(r'(\d{2,3}/\d{2,3}|\d{2,3}\+)', s)
+                    if m:
+                        caliber = m.group(1)
+
+                # Drying from SECADO col or PRODUCTO
                 secado = _rv(row, 16)
                 drying = _DRYING_MAP.get(str(secado).lower().strip()) if secado else None
+
+                # Fallback: parse both from PRODUCTO
+                cal_p, dry_p = _parse_producto(producto)
+                if not caliber:
+                    caliber = cal_p
+                if not drying:
+                    drying = dry_p
+
                 if not drying:
                     continue
+
                 productor = _rv(row, 12)
                 bins_data.append({
                     'bin_identifier': tarja_str,
-                    'producer_name':  str(productor).strip() if productor else '',
+                    'producto':       producto,
+                    'caliber':        caliber or '',
+                    'drying':         drying,
                     'weight_kg':      weight,
-                    'drying_method':  drying,
-                    'caliber_low':    cal_low,
-                    'caliber_high':   cal_high,
+                    'humedad':        None,
+                    'contenedor':     '',
+                    'producer_name':  str(productor).strip() if productor else '',
+                    'temporada':      _temporada(tarja_str),
                 })
 
             added, skipped = _do_import(bins_data)
-            flash(f'Live sync complete: {added} imported, {skipped} already existed.', 'success')
+            flash(f'Sync en vivo completo: {added} importados, {skipped} ya existían.', 'ok')
 
         except Exception as e:
             db.session.rollback()
-            flash(f'Sync failed: {e}', 'danger')
+            flash(f'Sync falló: {e}', 'err')
 
-        return redirect(url_for('list_bins'))
+        return redirect(url_for('index'))
+
+    # ── Bins ──────────────────────────────────────────────────────────────────
+
+    @app.route('/bins')
+    def list_bins():
+        from models import Bin, CALIBER_OPTIONS, DRYING_LABELS
+        from sqlalchemy import func
+
+        q_caliber  = request.args.get('caliber', '')
+        q_drying   = request.args.get('drying', '')
+        q_status   = request.args.get('status', '')
+        q_temporada = request.args.get('temporada', '')
+        q_grower   = request.args.get('grower', '')
+        q_text     = request.args.get('q', '').strip()
+
+        query = Bin.query
+
+        if q_caliber:
+            query = query.filter(Bin.caliber == q_caliber)
+        if q_drying:
+            query = query.filter(Bin.drying == q_drying)
+        if q_status:
+            query = query.filter(Bin.status == q_status)
+        if q_temporada:
+            query = query.filter(Bin.temporada == q_temporada)
+        if q_grower:
+            query = query.filter(Bin.producer_name == q_grower)
+        if q_text:
+            like = f'%{q_text}%'
+            query = query.filter(
+                db.or_(Bin.bin_identifier.ilike(like), Bin.producto.ilike(like))
+            )
+
+        total_count = query.count()
+        total_kg    = db.session.query(func.sum(Bin.weight_kg)).filter(
+            *([Bin.caliber == q_caliber]  if q_caliber  else []),
+            *([Bin.drying == q_drying]    if q_drying   else []),
+            *([Bin.status == q_status]    if q_status   else []),
+            *([Bin.temporada == q_temporada] if q_temporada else []),
+            *([Bin.producer_name == q_grower] if q_grower else []),
+        ).scalar() or 0
+
+        bins = query.order_by(Bin.bin_identifier).limit(500).all()
+
+        # Filter options
+        growers = [
+            r[0] for r in
+            db.session.query(Bin.producer_name)
+            .filter(Bin.producer_name != '')
+            .distinct()
+            .order_by(Bin.producer_name)
+            .all()
+        ]
+        temporadas = [
+            r[0] for r in
+            db.session.query(Bin.temporada)
+            .filter(Bin.temporada.isnot(None))
+            .distinct()
+            .order_by(Bin.temporada)
+            .all()
+        ]
+
+        return render_template('bins/list.html',
+            bins=bins,
+            total_count=total_count,
+            total_kg=round(total_kg, 1),
+            CALIBER_OPTIONS=CALIBER_OPTIONS,
+            DRYING_LABELS=DRYING_LABELS,
+            growers=growers,
+            temporadas=temporadas,
+            q_caliber=q_caliber, q_drying=q_drying, q_status=q_status,
+            q_temporada=q_temporada, q_grower=q_grower, q_text=q_text,
+        )
+
+    # ── Orders ────────────────────────────────────────────────────────────────
+
+    @app.route('/orders')
+    def list_orders():
+        from models import Order
+        orders = Order.query.order_by(Order.created_at.desc()).all()
+        return render_template('orders/list.html', orders=orders)
+
+    @app.route('/orders', methods=['POST'])
+    def create_order():
+        from models import Order, OrderLine
+
+        customer  = request.form.get('customer', '').strip()
+        reference = request.form.get('reference', '').strip() or None
+        notes     = request.form.get('notes', '').strip() or None
+
+        if not customer:
+            flash('El nombre del cliente es obligatorio.', 'err')
+            return redirect(url_for('list_orders'))
+
+        caliber     = request.form.get('caliber')   or None
+        drying      = request.form.get('drying')    or None
+        target_kg   = request.form.get('target_kg', '0')
+        max_humedad = request.form.get('max_humedad') or None
+        temporada   = request.form.get('temporada')  or None
+        pitted      = bool(request.form.get('pitted'))
+        line_notes  = request.form.get('line_notes', '').strip() or None
+
+        try:
+            tkg = float(target_kg)
+        except (ValueError, TypeError):
+            tkg = 0.0
+
+        order = Order(customer=customer, reference=reference, notes=notes)
+        db.session.add(order)
+        db.session.flush()
+
+        line = OrderLine(
+            order_id=order.id, caliber=caliber, drying=drying,
+            target_kg=tkg,
+            max_humedad=float(max_humedad) if max_humedad else None,
+            temporada=temporada, pitted=pitted, notes=line_notes,
+        )
+        db.session.add(line)
+        db.session.commit()
+        flash(f'Orden #{order.id} creada.', 'ok')
+        return redirect(url_for('order_detail', order_id=order.id))
+
+    @app.route('/orders/new')
+    def new_order():
+        from models import CALIBER_OPTIONS, DRYING_LABELS
+        return render_template('orders/new.html',
+            CALIBER_OPTIONS=CALIBER_OPTIONS, DRYING_LABELS=DRYING_LABELS)
+
+    @app.route('/orders/<int:order_id>')
+    def order_detail(order_id):
+        from models import Order, Bin, CALIBER_OPTIONS, DRYING_LABELS, Allocation
+
+        order = Order.query.get_or_404(order_id)
+
+        # Optional bin search for a specific line
+        search_line_id = request.args.get('search_line', type=int)
+        search_results = []
+        if search_line_id and order.status in ('open', 'confirmed'):
+            line = next((l for l in order.lines if l.id == search_line_id), None)
+            if line:
+                allocated_bin_ids = {a.bin_id for a in Allocation.query.all()}
+                q = Bin.query.filter_by(status='available')
+                if line.caliber:
+                    q = q.filter(Bin.caliber == line.caliber)
+                if line.drying:
+                    q = q.filter(Bin.drying == line.drying)
+                if line.temporada:
+                    q = q.filter(Bin.temporada == line.temporada)
+                if line.max_humedad:
+                    q = q.filter(
+                        db.or_(Bin.humedad.is_(None), Bin.humedad <= line.max_humedad)
+                    )
+                if allocated_bin_ids:
+                    q = q.filter(Bin.id.notin_(allocated_bin_ids))
+                search_results = q.order_by(Bin.bin_identifier).limit(200).all()
+
+        return render_template('orders/detail.html',
+            order=order,
+            search_results=search_results,
+            search_line_id=search_line_id,
+            CALIBER_OPTIONS=CALIBER_OPTIONS,
+            DRYING_LABELS=DRYING_LABELS,
+        )
+
+    @app.route('/orders/<int:order_id>/lines', methods=['POST'])
+    def add_line(order_id):
+        from models import Order, OrderLine
+
+        order = Order.query.get_or_404(order_id)
+        if order.status in ('fulfilled', 'cancelled'):
+            flash('No se pueden agregar líneas a una orden cerrada.', 'err')
+            return redirect(url_for('order_detail', order_id=order_id))
+
+        caliber     = request.form.get('caliber')    or None
+        drying      = request.form.get('drying')     or None
+        target_kg   = request.form.get('target_kg',  '0')
+        max_humedad = request.form.get('max_humedad') or None
+        temporada   = request.form.get('temporada')  or None
+        pitted      = bool(request.form.get('pitted'))
+        notes       = request.form.get('notes', '').strip() or None
+
+        try:
+            tkg = float(target_kg)
+        except (ValueError, TypeError):
+            tkg = 0.0
+
+        line = OrderLine(
+            order_id=order_id, caliber=caliber, drying=drying,
+            target_kg=tkg,
+            max_humedad=float(max_humedad) if max_humedad else None,
+            temporada=temporada, pitted=pitted, notes=notes,
+        )
+        db.session.add(line)
+        db.session.commit()
+        flash('Línea agregada.', 'ok')
+        return redirect(url_for('order_detail', order_id=order_id))
+
+    @app.route('/orders/<int:order_id>/lines/<int:line_id>/allocate', methods=['POST'])
+    def allocate_bins(order_id, line_id):
+        from models import Order, OrderLine, Allocation, Bin
+
+        order = Order.query.get_or_404(order_id)
+        line  = OrderLine.query.get_or_404(line_id)
+
+        if order.status in ('fulfilled', 'cancelled'):
+            flash('No se pueden asignar bins a una orden cerrada.', 'err')
+            return redirect(url_for('order_detail', order_id=order_id))
+
+        bin_ids = request.form.getlist('bin_ids')
+        if not bin_ids:
+            flash('Seleccioná al menos un bin.', 'err')
+            return redirect(url_for('order_detail', order_id=order_id,
+                                    search_line=line_id))
+
+        count = 0
+        for bid in bin_ids:
+            try:
+                b = Bin.query.get(int(bid))
+                if not b or b.status != 'available':
+                    continue
+                db.session.add(Allocation(order_id=order_id, line_id=line_id, bin_id=b.id))
+                b.status = 'allocated'
+                count += 1
+            except IntegrityError:
+                db.session.rollback()
+        db.session.commit()
+        flash(f'{count} bin(s) asignado(s).', 'ok')
+        return redirect(url_for('order_detail', order_id=order_id))
+
+    @app.route('/allocations/<int:alloc_id>/release', methods=['POST'])
+    def release_bin(alloc_id):
+        from models import Allocation, Bin
+
+        alloc = Allocation.query.get_or_404(alloc_id)
+        order_id = alloc.order_id
+        b = Bin.query.get(alloc.bin_id)
+        db.session.delete(alloc)
+        if b:
+            b.status = 'available'
+        db.session.commit()
+        flash('Bin liberado.', 'ok')
+        return redirect(url_for('order_detail', order_id=order_id))
+
+    @app.route('/orders/<int:order_id>/status', methods=['POST'])
+    def update_order_status(order_id):
+        from models import Order, Bin, Allocation
+
+        order      = Order.query.get_or_404(order_id)
+        new_status = request.form.get('status')
+
+        allowed = {
+            'open':      ['confirmed', 'cancelled'],
+            'confirmed': ['fulfilled', 'cancelled'],
+            'fulfilled': [],
+            'cancelled': [],
+        }
+        if new_status not in allowed.get(order.status, []):
+            flash(f'Transición de estado no permitida.', 'err')
+            return redirect(url_for('order_detail', order_id=order_id))
+
+        if new_status == 'cancelled':
+            allocs = Allocation.query.filter_by(order_id=order_id).all()
+            for a in allocs:
+                b = Bin.query.get(a.bin_id)
+                if b:
+                    b.status = 'available'
+                db.session.delete(a)
+            flash('Orden cancelada — bins liberados.', 'ok')
+        elif new_status == 'fulfilled':
+            allocs = Allocation.query.filter_by(order_id=order_id).all()
+            for a in allocs:
+                b = Bin.query.get(a.bin_id)
+                if b:
+                    b.status = 'shipped'
+            flash('Orden cumplida — bins marcados como despachados.', 'ok')
+        else:
+            flash(f'Estado actualizado a "{new_status}".', 'ok')
+
+        order.status = new_status
+        db.session.commit()
+        return redirect(url_for('order_detail', order_id=order_id))
 
     return app
+
+
+def _migrate(db_obj):
+    """Additive schema migrations — safe to run on every startup."""
+    stmts = [
+        # bins — new columns
+        'ALTER TABLE bins ADD COLUMN IF NOT EXISTS producto VARCHAR(200)',
+        'ALTER TABLE bins ADD COLUMN IF NOT EXISTS caliber VARCHAR(20)',
+        'ALTER TABLE bins ADD COLUMN IF NOT EXISTS drying VARCHAR(30)',
+        'ALTER TABLE bins ADD COLUMN IF NOT EXISTS humedad FLOAT',
+        'ALTER TABLE bins ADD COLUMN IF NOT EXISTS contenedor VARCHAR(100)',
+        'ALTER TABLE bins ADD COLUMN IF NOT EXISTS temporada VARCHAR(10)',
+        "ALTER TABLE bins ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'available'",
+        # orders — new columns
+        'ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer VARCHAR(200)',
+        'ALTER TABLE orders ADD COLUMN IF NOT EXISTS reference VARCHAR(100)',
+        # copy buyer_name → customer for old rows
+        'UPDATE orders SET customer = buyer_name WHERE customer IS NULL AND buyer_name IS NOT NULL',
+        # status rename (draft→open, shipped/closed→fulfilled)
+        "UPDATE orders SET status = 'open'      WHERE status = 'draft'",
+        "UPDATE orders SET status = 'fulfilled' WHERE status IN ('shipped','closed')",
+    ]
+    with db_obj.engine.connect() as conn:
+        for sql in stmts:
+            try:
+                conn.execute(db_obj.text(sql))
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
 
 
 app = create_app()
