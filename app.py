@@ -413,6 +413,8 @@ def create_app():
 
     @app.route('/bins/sync', methods=['GET', 'POST'])
     def sync_bins():
+        import traceback as _tb
+
         def _render():
             return render_template(
                 'bins/sync.html',
@@ -421,7 +423,10 @@ def create_app():
                 pw_configured=bool(PWAREHOUSE_USER),
             )
 
-        if request.method == 'POST':
+        try:
+            if request.method == 'GET':
+                return _render()
+
             import requests as _req
             from models import Bin
             from scraper import pwarehouse_login, fetch_ciruela_bins
@@ -431,63 +436,63 @@ def create_app():
             username   = request.form.get('username',   '').strip() or PWAREHOUSE_USER
             password   = request.form.get('password',   '').strip() or PWAREHOUSE_PASS
 
-            try:
-                if session_id:
-                    sess = _req.Session()
-                    sess.headers.update({'User-Agent': 'Mozilla/5.0'})
-                    sid      = session_id
-                    base_url = url
-                else:
-                    if not username or not password:
-                        flash(
-                            'Enter your pWarehouse8 credentials, or paste a Session ID '
-                            'copied from your browser.',
-                            'danger',
-                        )
-                        return _render()
-                    sess, sid, base_url = pwarehouse_login(url, username, password)
+            if session_id:
+                sess = _req.Session()
+                sess.headers.update({'User-Agent': 'Mozilla/5.0'})
+                sid      = session_id
+                base_url = url
+            else:
+                if not username or not password:
+                    flash(
+                        'Enter your pWarehouse8 credentials, or paste a Session ID '
+                        'copied from your browser.',
+                        'danger',
+                    )
+                    return _render()
+                sess, sid, base_url = pwarehouse_login(url, username, password)
 
-                remote_bins, pw_total = fetch_ciruela_bins(sess, sid, base_url)
+            remote_bins, pw_total = fetch_ciruela_bins(sess, sid, base_url)
 
-                added   = 0
-                skipped = 0
-                errors  = []
+            added   = 0
+            skipped = 0
+            errors  = []
 
-                for b in remote_bins:
-                    if Bin.query.filter_by(bin_identifier=b['bin_identifier']).first():
-                        skipped += 1
-                        continue
-                    try:
-                        db.session.add(Bin(
-                            bin_identifier=b['bin_identifier'],
-                            producer_name=b['producer_name'],
-                            weight_kg=b['weight_kg'],
-                            drying_method=b['drying_method'],
-                            caliber_low=b['caliber_low'],
-                            caliber_high=b['caliber_high'],
-                        ))
-                        added += 1
-                    except Exception as e:
-                        errors.append(f"{b['bin_identifier']}: {e}")
+            for b in remote_bins:
+                if Bin.query.filter_by(bin_identifier=b['bin_identifier']).first():
+                    skipped += 1
+                    continue
+                try:
+                    db.session.add(Bin(
+                        bin_identifier=b['bin_identifier'],
+                        producer_name=b['producer_name'],
+                        weight_kg=b['weight_kg'],
+                        drying_method=b['drying_method'],
+                        caliber_low=b['caliber_low'],
+                        caliber_high=b['caliber_high'],
+                    ))
+                    added += 1
+                except Exception as ex:
+                    errors.append(f"{b['bin_identifier']}: {ex}")
 
-                db.session.commit()
+            db.session.commit()
 
-                flash(
-                    f'Sync complete: {added} new bins imported, {skipped} already in inventory. '
-                    f'({len(remote_bins)} ciruela bins found out of {pw_total} total in pWarehouse8.)',
-                    'success',
-                )
-                for msg in errors[:10]:
-                    flash(msg, 'warning')
+            flash(
+                f'Sync complete: {added} new bins imported, {skipped} already in inventory. '
+                f'({len(remote_bins)} ciruela bins found out of {pw_total} total in pWarehouse8.)',
+                'success',
+            )
+            for msg in errors[:10]:
+                flash(msg, 'warning')
 
-                return redirect(url_for('list_bins'))
+            return redirect(url_for('list_bins'))
 
-            except Exception as e:
-                db.session.rollback()
-                flash(f'Sync failed: {e}', 'danger')
-                return _render()
-
-        return _render()
+        except Exception:
+            db.session.rollback()
+            tb = _tb.format_exc()
+            return (
+                '<pre style="white-space:pre-wrap;font-family:monospace;padding:2em;font-size:13px">'
+                + tb + '</pre>'
+            ), 500
 
     return app
 
