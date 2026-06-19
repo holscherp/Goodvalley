@@ -413,11 +413,7 @@ def create_app():
 
     @app.route('/bins/sync', methods=['GET', 'POST'])
     def sync_bins():
-        import requests as _req
-        from models import Bin
-        from scraper import pwarehouse_login, fetch_ciruela_bins
-
-        def _render(error=None):
+        def _render():
             return render_template(
                 'bins/sync.html',
                 pw_url=PWAREHOUSE_URL,
@@ -426,6 +422,10 @@ def create_app():
             )
 
         if request.method == 'POST':
+            import requests as _req
+            from models import Bin
+            from scraper import pwarehouse_login, fetch_ciruela_bins
+
             url        = request.form.get('url',        '').strip() or PWAREHOUSE_URL
             session_id = request.form.get('session_id', '').strip()
             username   = request.form.get('username',   '').strip() or PWAREHOUSE_USER
