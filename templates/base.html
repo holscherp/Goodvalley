@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Goodvalley · Ciruelas{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
 </head>
 <body>
 <header class="topbar">
   <a class="brand" href="{{ url_for('index') }}">
-    <span class="logo">🫐</span>
-    <span class="brand-name">Goodvalley</span>
-    <span class="brand-sub">Ciruelas · Bins</span>
+    <div class="brand-logo-wrap">
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="Goodvalley" class="brand-logo">
+    </div>
   </a>
   <nav>
     <a href="{{ url_for('index') }}"
