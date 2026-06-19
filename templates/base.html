@@ -28,6 +28,16 @@
         <i class="bi bi-archive me-1"></i>Bin Inventory
       </a>
     </div>
+    <div class="ms-auto d-flex gap-2 align-items-center">
+      <form action="/sync" method="post" class="d-flex gap-2">
+        <button type="submit" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-file-earmark-arrow-down me-1"></i>Sync (archivo)
+        </button>
+        <button type="submit" name="live" value="1" class="btn btn-sm btn-outline-primary">
+          <i class="bi bi-lightning me-1"></i>Sync en vivo
+        </button>
+      </form>
+    </div>
   </div>
 </nav>
 

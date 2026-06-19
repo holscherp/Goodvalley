@@ -1,10 +1,8 @@
 import os
 from datetime import datetime
-from io import BytesIO
 
 from flask import Flask, render_template, request, redirect, url_for, flash
 from sqlalchemy.exc import IntegrityError
-import openpyxl
 
 from db import db
 
@@ -301,192 +299,161 @@ def create_app():
 
         return render_template('bins/edit.html', bin=b)
 
-    @app.route('/bins/import', methods=['GET', 'POST'])
-    def import_bins():
-        if request.method == 'POST':
-            from models import Bin
+    @app.route('/sync', methods=['POST'])
+    def sync():
+        import json as _json
+        import os as _os
+        import re as _re
+        from models import Bin
 
-            file = request.files.get('file')
-            if not file or not file.filename.lower().endswith('.xlsx'):
-                flash('Please upload a .xlsx file.', 'danger')
-                return redirect(url_for('import_bins'))
+        _DRYING_MAP = {
+            'cancha': 'field', 'field drying': 'field', 'field': 'field',
+            'horno': 'oven',   'oven drying':  'oven',  'oven':  'oven',
+            'otro':  'other',  'other':         'other',
+        }
 
-            wb = openpyxl.load_workbook(BytesIO(file.read()))
-            ws = wb.active
+        def _parse_js(text):
+            try:
+                return _json.loads(text)
+            except Exception:
+                pass
+            return _json.loads(_re.sub(r'(?<!["\w])(\w+)\s*:', r'"\1":', text))
 
-            # Spanish and English drying method names
-            drying_map = {
-                'oven drying': 'oven', 'oven': 'oven', 'horno': 'oven',
-                'field drying': 'field', 'field': 'field', 'cancha': 'field',
-                'other': 'other', 'otro': 'other',
-            }
+        def _rv(row, i):
+            return row.get(i) or row.get(str(i))
 
-            # Auto-detect the header row by finding the row containing "TARJA"
-            header_row_num = None
-            col = {}
-            for idx, row in enumerate(ws.iter_rows(max_row=15, values_only=True), start=1):
-                vals = [str(v).upper().strip() if v is not None else '' for v in row]
-                if 'TARJA' in vals:
-                    header_row_num = idx
-                    col = {name: i for i, name in enumerate(vals)}
-                    break
-
-            if header_row_num is None:
-                flash('Could not find a header row with a TARJA column. Check the file format.', 'danger')
-                return redirect(url_for('import_bins'))
-
-            errors = []
-            added = 0
-            skipped = 0
-
-            for row_num, row in enumerate(
-                ws.iter_rows(min_row=header_row_num + 1, values_only=True),
-                start=header_row_num + 1,
-            ):
-                if not any(cell is not None for cell in row):
-                    continue
-
-                def cell(name):
-                    i = col.get(name)
-                    return row[i] if i is not None and i < len(row) else None
-
-                tarja    = cell('TARJA')
-                neto     = cell('NETO')
-                productor = cell('PRODUCTOR')
-                serie    = cell('SERIE')
-                secado   = cell('SECADO')
-
-                if tarja is None:
-                    errors.append(f'Row {row_num}: Missing TARJA — skipped.')
-                    continue
-
-                # TARJA may come as a float (e.g. 2601304118.0) — strip decimal
-                tarja_str = str(int(tarja)) if isinstance(tarja, float) else str(tarja).strip()
-
-                # Caliber (SERIE) — may be None or "N/A"
-                cal_low = cal_high = None
-                if serie is not None:
-                    serie_str = str(serie).strip().upper()
-                    if serie_str not in ('', 'N/A', 'NONE', '-'):
-                        if '/' in serie_str:
-                            try:
-                                lo, hi = serie_str.split('/', 1)
-                                cal_low, cal_high = int(lo), int(hi)
-                            except ValueError:
-                                errors.append(f'Row {row_num}: Invalid SERIE "{serie}" — stored as N/A.')
-                        else:
-                            errors.append(f'Row {row_num}: SERIE "{serie}" not in XX/YY format — stored as N/A.')
-
-                # Drying method (SECADO)
-                drying_key = drying_map.get(str(secado).lower().strip()) if secado else None
-                if not drying_key:
-                    errors.append(f'Row {row_num}: Unknown SECADO "{secado}" — skipped.')
-                    continue
-
-                if Bin.query.filter_by(bin_identifier=tarja_str).first():
+        def _do_import(bins_data):
+            added = skipped = 0
+            for b in bins_data:
+                bid = str(b.get('bin_identifier', '')).strip()
+                if not bid or Bin.query.filter_by(bin_identifier=bid).first():
                     skipped += 1
                     continue
-
-                try:
-                    db.session.add(Bin(
-                        bin_identifier=tarja_str,
-                        producer_name=str(productor).strip() if productor else '',
-                        weight_kg=float(neto) if neto is not None else 0.0,
-                        drying_method=drying_key,
-                        caliber_low=cal_low,
-                        caliber_high=cal_high,
-                    ))
-                    added += 1
-                except Exception as e:
-                    db.session.rollback()
-                    errors.append(f'Row {row_num}: {e}')
+                drying = b.get('drying_method', '')
+                if drying not in ('field', 'oven', 'other'):
+                    skipped += 1
                     continue
-
+                db.session.add(Bin(
+                    bin_identifier=bid,
+                    producer_name=b.get('producer_name', ''),
+                    weight_kg=float(b.get('weight_kg') or 0),
+                    drying_method=drying,
+                    caliber_low=b.get('caliber_low'),
+                    caliber_high=b.get('caliber_high'),
+                ))
+                added += 1
             db.session.commit()
-            flash(f'Import complete: {added} added, {skipped} skipped (duplicate IDs).', 'success')
-            for msg in errors[:15]:
-                flash(msg, 'warning')
+            return added, skipped
 
-            return redirect(url_for('list_bins'))
-
-        return render_template('bins/import.html')
-
-    @app.route('/bins/sync', methods=['GET', 'POST'])
-    def sync_bins():
-        import traceback as _tb
-
-        def _render():
-            return render_template(
-                'bins/sync.html',
-                pw_url=PWAREHOUSE_URL,
-                pw_user=PWAREHOUSE_RUT,
-                pw_configured=bool(PWAREHOUSE_RUT),
-            )
+        live = request.form.get('live') == '1'
 
         try:
-            if request.method == 'GET':
-                return _render()
+            if not live:
+                dump_path = _os.path.join(_os.path.dirname(__file__), 'data_dump', 'bins.json')
+                if not _os.path.exists(dump_path):
+                    flash('data_dump/bins.json not found. Place the export file there and redeploy.', 'danger')
+                    return redirect(url_for('list_bins'))
+                with open(dump_path) as f:
+                    bins_data = _json.load(f)
+                added, skipped = _do_import(bins_data)
+                flash(f'File sync complete: {added} imported, {skipped} already existed.', 'success')
+                return redirect(url_for('list_bins'))
 
+            # — Live sync from pWarehouse8 —
             import requests as _req
-            from models import Bin
-            from scraper import pwarehouse_login, fetch_ciruela_bins
+            url = PWAREHOUSE_URL.rstrip('/')
+            rut = PWAREHOUSE_RUT
+            pw  = PWAREHOUSE_PASS
+            if not rut or not pw:
+                flash('Set PWAREHOUSE_RUT and PWAREHOUSE_PASS in Railway Variables for live sync.', 'danger')
+                return redirect(url_for('list_bins'))
 
-            url      = request.form.get('url',      '').strip() or PWAREHOUSE_URL
-            rut      = request.form.get('rut',      '').strip() or PWAREHOUSE_RUT
-            password = request.form.get('password', '').strip() or PWAREHOUSE_PASS
+            sess = _req.Session()
+            sess.headers['User-Agent'] = 'Mozilla/5.0 (compatible; Goodvalley-Sync/1.0)'
+            r = sess.get(url + '/', timeout=30)
+            r.raise_for_status()
 
-            if not rut or not password:
-                flash(
-                    'RUT and password are required. Add PWAREHOUSE_RUT and PWAREHOUSE_PASS '
-                    'to Railway Variables, or enter them in the form.',
-                    'danger',
-                )
-                return _render()
+            sid = None
+            for pat in [
+                r"['\"]?_S_ID['\"]?\s*[=:]\s*['\"]([A-Za-z0-9]+)['\"]",
+                r"_S_ID=([A-Za-z0-9]+)",
+            ]:
+                m = _re.search(pat, r.text, _re.IGNORECASE)
+                if m:
+                    sid = m.group(1)
+                    break
+            if not sid:
+                raise ValueError("Could not find _S_ID in pWarehouse8 login page.")
 
-            sess, sid, base_url = pwarehouse_login(url, rut, password)
+            fp = '&O16= \x02\x02' + rut + '&O17= \x02\x02' + pw
+            sess.post(url + '/HandleEvent', data={
+                'Ajax': '1', 'IsEvent': '1', 'Obj': 'O23', 'Evt': 'click',
+                'this': 'O23', '_S_ID': sid, '_fp_': fp, '_seq_': 'a', '_uo_': 'O0',
+            }, timeout=30)
 
-            remote_bins, pw_total = fetch_ciruela_bins(sess, sid, base_url)
+            all_rows, start, total, page_size = [], 0, None, 2000
+            while True:
+                page = start // page_size + 1
+                dr = sess.get(url + '/HandleEvent', params={
+                    'IsEvent': '1', 'Obj': 'O16B', 'Evt': 'data',
+                    'options': '1', 'page': str(page),
+                    'start': str(start), 'limit': str(page_size), '_S_ID': sid,
+                }, timeout=90)
+                dr.raise_for_status()
+                data = _parse_js(dr.text)
+                rows = data.get('rows', [])
+                if not rows:
+                    break
+                all_rows.extend(rows)
+                if total is None:
+                    total = int(data.get('results', len(rows)))
+                if start + page_size >= total:
+                    break
+                start += page_size
 
-            added   = 0
-            skipped = 0
-            errors  = []
-
-            for b in remote_bins:
-                if Bin.query.filter_by(bin_identifier=b['bin_identifier']).first():
-                    skipped += 1
+            bins_data = []
+            for row in all_rows:
+                if 'CIRUELA' not in str(_rv(row, 8) or '').upper():
                     continue
+                tarja = _rv(row, 1)
+                if tarja is None:
+                    continue
+                tarja_str = str(int(float(tarja))) if isinstance(tarja, (int, float)) else str(tarja).strip()
+                neto = _rv(row, 2)
                 try:
-                    db.session.add(Bin(
-                        bin_identifier=b['bin_identifier'],
-                        producer_name=b['producer_name'],
-                        weight_kg=b['weight_kg'],
-                        drying_method=b['drying_method'],
-                        caliber_low=b['caliber_low'],
-                        caliber_high=b['caliber_high'],
-                    ))
-                    added += 1
-                except Exception as ex:
-                    errors.append(f"{b['bin_identifier']}: {ex}")
+                    weight = float(neto) if neto is not None else 0.0
+                except Exception:
+                    weight = 0.0
+                cal_low = cal_high = None
+                serie = _rv(row, 15)
+                if serie and '/' in str(serie):
+                    try:
+                        lo, hi = str(serie).strip().upper().split('/', 1)
+                        cal_low, cal_high = int(lo.strip()), int(hi.strip())
+                    except Exception:
+                        pass
+                secado = _rv(row, 16)
+                drying = _DRYING_MAP.get(str(secado).lower().strip()) if secado else None
+                if not drying:
+                    continue
+                productor = _rv(row, 12)
+                bins_data.append({
+                    'bin_identifier': tarja_str,
+                    'producer_name':  str(productor).strip() if productor else '',
+                    'weight_kg':      weight,
+                    'drying_method':  drying,
+                    'caliber_low':    cal_low,
+                    'caliber_high':   cal_high,
+                })
 
-            db.session.commit()
+            added, skipped = _do_import(bins_data)
+            flash(f'Live sync complete: {added} imported, {skipped} already existed.', 'success')
 
-            flash(
-                f'Sync complete: {added} new bins imported, {skipped} already in inventory. '
-                f'({len(remote_bins)} ciruela bins found out of {pw_total} total in pWarehouse8.)',
-                'success',
-            )
-            for msg in errors[:10]:
-                flash(msg, 'warning')
-
-            return redirect(url_for('list_bins'))
-
-        except Exception:
+        except Exception as e:
             db.session.rollback()
-            tb = _tb.format_exc()
-            return (
-                '<pre style="white-space:pre-wrap;font-family:monospace;padding:2em;font-size:13px">'
-                + tb + '</pre>'
-            ), 500
+            flash(f'Sync failed: {e}', 'danger')
+
+        return redirect(url_for('list_bins'))
 
     return app
 
