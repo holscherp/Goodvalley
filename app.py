@@ -433,13 +433,8 @@ def create_app():
 
             try:
                 if session_id:
-                    # Use a pre-existing browser session directly — no login needed
                     sess = _req.Session()
-                    sess.headers.update({
-                        'User-Agent': 'Mozilla/5.0',
-                        '_S_ID': session_id,
-                        'Unisessionid': session_id,
-                    })
+                    sess.headers.update({'User-Agent': 'Mozilla/5.0'})
                     sid      = session_id
                     base_url = url
                 else:
@@ -454,42 +449,43 @@ def create_app():
 
                 remote_bins, pw_total = fetch_ciruela_bins(sess, sid, base_url)
 
+                added   = 0
+                skipped = 0
+                errors  = []
+
+                for b in remote_bins:
+                    if Bin.query.filter_by(bin_identifier=b['bin_identifier']).first():
+                        skipped += 1
+                        continue
+                    try:
+                        db.session.add(Bin(
+                            bin_identifier=b['bin_identifier'],
+                            producer_name=b['producer_name'],
+                            weight_kg=b['weight_kg'],
+                            drying_method=b['drying_method'],
+                            caliber_low=b['caliber_low'],
+                            caliber_high=b['caliber_high'],
+                        ))
+                        added += 1
+                    except Exception as e:
+                        errors.append(f"{b['bin_identifier']}: {e}")
+
+                db.session.commit()
+
+                flash(
+                    f'Sync complete: {added} new bins imported, {skipped} already in inventory. '
+                    f'({len(remote_bins)} ciruela bins found out of {pw_total} total in pWarehouse8.)',
+                    'success',
+                )
+                for msg in errors[:10]:
+                    flash(msg, 'warning')
+
+                return redirect(url_for('list_bins'))
+
             except Exception as e:
+                db.session.rollback()
                 flash(f'Sync failed: {e}', 'danger')
                 return _render()
-
-            added   = 0
-            skipped = 0
-            errors  = []
-
-            for b in remote_bins:
-                if Bin.query.filter_by(bin_identifier=b['bin_identifier']).first():
-                    skipped += 1
-                    continue
-                try:
-                    db.session.add(Bin(
-                        bin_identifier=b['bin_identifier'],
-                        producer_name=b['producer_name'],
-                        weight_kg=b['weight_kg'],
-                        drying_method=b['drying_method'],
-                        caliber_low=b['caliber_low'],
-                        caliber_high=b['caliber_high'],
-                    ))
-                    added += 1
-                except Exception as e:
-                    errors.append(f"{b['bin_identifier']}: {e}")
-
-            db.session.commit()
-
-            flash(
-                f'Sync complete: {added} new bins imported, {skipped} already in inventory. '
-                f'({len(remote_bins)} ciruela bins found out of {pw_total} total in pWarehouse8.)',
-                'success',
-            )
-            for msg in errors[:10]:
-                flash(msg, 'warning')
-
-            return redirect(url_for('list_bins'))
 
         return _render()
 

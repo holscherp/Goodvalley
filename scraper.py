@@ -36,6 +36,33 @@ DRYING_MAP = {
 }
 
 
+def _parse_response(r):
+    """
+    Parse a pWarehouse8 HTTP response.
+    pWarehouse8 returns JavaScript object notation with unquoted keys
+    (e.g. {success:true,results:10805,rows:[...]}) which is not valid JSON.
+    We quote bare word keys before handing to json.loads.
+    """
+    text = r.text.strip()
+    if not text:
+        raise ValueError("pWarehouse8 returned an empty response.")
+    if '<html' in text[:100].lower() or '<!doctype' in text[:100].lower():
+        raise ValueError(
+            "pWarehouse8 returned the login page — session ID may be expired. "
+            "Get a fresh _S_ID from your browser and try again."
+        )
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        pass
+    # Quote bare keys (including numeric):  success: → "success":  0: → "0":
+    fixed = re.sub(r'(?<!["\w])(\w+)\s*:', r'"\1":', text)
+    try:
+        return json.loads(fixed)
+    except (json.JSONDecodeError, ValueError):
+        raise ValueError(f"Cannot parse pWarehouse8 response: {text[:120]}")
+
+
 def _row_val(row, idx):
     """Row dict keys may be int or str depending on JSON serialisation."""
     v = row.get(idx)
@@ -149,16 +176,7 @@ def fetch_ciruela_bins(sess, sid, base_url, page_size=2000):
         }
         r = sess.get(handle_url, params=params, timeout=90)
         r.raise_for_status()
-        try:
-            data = r.json()
-        except (json.JSONDecodeError, ValueError):
-            preview = r.text[:120].strip()
-            if '<html' in preview.lower() or '<!doctype' in preview.lower():
-                raise ValueError(
-                    "pWarehouse8 returned the login page instead of data — "
-                    "the credentials may be wrong or the session was rejected."
-                )
-            raise ValueError(f"pWarehouse8 returned unexpected data: {preview}")
+        data = _parse_response(r)
 
         if not data.get('success'):
             raise ValueError(f"pWarehouse8 data endpoint returned failure: {data}")
