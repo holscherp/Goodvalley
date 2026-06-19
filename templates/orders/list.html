@@ -42,11 +42,20 @@
           {% endif %}
         </td>
         <td class="text-muted small">{{ order.created_at.strftime('%d %b %Y') }}</td>
-        <td class="text-end">
+        <td class="text-end d-flex gap-2 justify-content-end">
           <a href="{{ url_for('order_detail', order_id=order.id) }}"
              class="btn btn-sm btn-outline-secondary">
             View <i class="bi bi-arrow-right ms-1"></i>
           </a>
+          {% if order.status in ('cancelled', 'closed') %}
+          <form method="POST"
+                action="{{ url_for('delete_order', order_id=order.id) }}"
+                onsubmit="return confirm('Permanently delete Order #{{ order.id }} ({{ order.buyer_name }})? This cannot be undone.');">
+            <button type="submit" class="btn btn-sm btn-outline-danger">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}

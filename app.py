@@ -226,6 +226,21 @@ def create_app():
 
         return redirect(url_for('order_detail', order_id=order_id))
 
+    @app.route('/orders/<int:order_id>/delete', methods=['POST'])
+    def delete_order(order_id):
+        from models import Order
+
+        order = Order.query.get_or_404(order_id)
+
+        if order.status not in ('cancelled', 'closed'):
+            flash('Only cancelled or closed orders can be deleted.', 'danger')
+            return redirect(url_for('list_orders'))
+
+        db.session.delete(order)
+        db.session.commit()
+        flash(f'Order #{order_id} deleted.', 'success')
+        return redirect(url_for('list_orders'))
+
     # ── BINS ──────────────────────────────────────────────────────────────────
 
     @app.route('/bins')
