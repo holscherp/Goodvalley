@@ -189,7 +189,14 @@ def create_app():
                     'start': str(start), 'limit': str(page_size), '_S_ID': sid,
                 }, timeout=90)
                 dr.raise_for_status()
-                data = _parse_js(dr.text)
+                raw = dr.text.strip()
+                if raw in ('{[]}', '{}', '[]', ''):
+                    raise ValueError(
+                        "pWarehouse8 bloqueó la conexión desde Railway (respondió vacío). "
+                        "Ejecutá sync_local.py desde tu Mac y después subí el bins.json "
+                        "con el botón '📤 Subir JSON'."
+                    )
+                data = _parse_js(raw)
                 rows = data.get('rows', [])
                 if not rows:
                     break
@@ -261,6 +268,62 @@ def create_app():
             db.session.rollback()
             flash(f'Sync falló: {e}', 'err')
 
+        return redirect(url_for('index'))
+
+    @app.route('/sync/upload', methods=['POST'])
+    def sync_upload():
+        import json as _json
+        from models import Bin
+
+        def _temporada(t):
+            if len(t) >= 8:
+                try:
+                    p = int(t[:2])
+                    if 18 <= p <= 35:
+                        return str(2000 + p)
+                except ValueError:
+                    pass
+            return None
+
+        f = request.files.get('bins_file')
+        if not f or not f.filename:
+            flash('No se seleccionó ningún archivo.', 'err')
+            return redirect(url_for('index'))
+
+        try:
+            bins_data = _json.load(f)
+        except Exception as e:
+            flash(f'El archivo no es JSON válido: {e}', 'err')
+            return redirect(url_for('index'))
+
+        added = skipped = 0
+        for b in bins_data:
+            bid = str(b.get('bin_identifier', '')).strip()
+            if not bid:
+                skipped += 1
+                continue
+            if Bin.query.filter_by(bin_identifier=bid).first():
+                skipped += 1
+                continue
+            drying = b.get('drying') or ''
+            if drying not in ('cancha', 'horno', 'termino_secado'):
+                skipped += 1
+                continue
+            db.session.add(Bin(
+                bin_identifier=bid,
+                producto=b.get('producto') or '',
+                caliber=b.get('caliber') or '',
+                drying=drying,
+                weight_kg=float(b.get('weight_kg') or 0),
+                humedad=b.get('humedad'),
+                contenedor=b.get('contenedor') or '',
+                producer_name=b.get('producer_name') or '',
+                temporada=b.get('temporada') or _temporada(bid),
+                status='available',
+            ))
+            added += 1
+        db.session.commit()
+        flash(f'Sync (subida) completo: {added} importados, {skipped} ya existían o sin secado.', 'ok')
         return redirect(url_for('index'))
 
     # ── Bins ──────────────────────────────────────────────────────────────────

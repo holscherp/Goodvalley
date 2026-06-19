@@ -26,6 +26,14 @@
     <button class="btn btn-sync" name="live" value="1"
             title="Conectar al sistema y traer datos frescos">⚡ Sync en vivo</button>
   </form>
+  <form action="{{ url_for('sync_upload') }}" method="post"
+        enctype="multipart/form-data" class="sync-form">
+    <label class="btn btn-ghost" title="Subir bins.json desde tu computadora">
+      📤 Subir JSON
+      <input type="file" name="bins_file" accept=".json" style="display:none"
+             onchange="this.form.submit()">
+    </label>
+  </form>
 </header>
 
 {% with messages = get_flashed_messages(with_categories=true) %}
