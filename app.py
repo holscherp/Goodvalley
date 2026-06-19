@@ -647,6 +647,8 @@ def _migrate(db_obj):
         'ALTER TABLE orders ADD COLUMN IF NOT EXISTS reference VARCHAR(100)',
         # copy buyer_name → customer for old rows
         'UPDATE orders SET customer = buyer_name WHERE customer IS NULL AND buyer_name IS NOT NULL',
+        # Drop NOT NULL on legacy order columns so new inserts don't fail
+        'ALTER TABLE orders ALTER COLUMN buyer_name DROP NOT NULL',
         # status rename (draft→open, shipped/closed→fulfilled)
         "UPDATE orders SET status = 'open'      WHERE status = 'draft'",
         "UPDATE orders SET status = 'fulfilled' WHERE status IN ('shipped','closed')",
