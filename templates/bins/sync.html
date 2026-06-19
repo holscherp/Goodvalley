@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+{% block title %}Sync from pWarehouse8 — Goodvalley{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <a href="{{ url_for('list_bins') }}" class="text-muted text-decoration-none">
+    <i class="bi bi-arrow-left me-1"></i>Back to Inventory
+  </a>
+</div>
+
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+
+    <div class="card shadow-sm mb-4">
+      <div class="card-header bg-white fw-semibold">
+        <i class="bi bi-arrow-repeat me-2"></i>Sync Ciruela Bins from pWarehouse8
+      </div>
+      <div class="card-body">
+
+        {% if pw_configured %}
+        <div class="alert alert-success py-2 mb-3 small">
+          <i class="bi bi-check-circle me-1"></i>
+          Credentials are configured in Railway environment variables.
+          Click <strong>Sync Now</strong> to import directly — no need to fill in the form below.
+        </div>
+        {% else %}
+        <div class="alert alert-warning py-2 mb-3 small">
+          <i class="bi bi-exclamation-triangle me-1"></i>
+          No credentials found in environment variables. Enter them below, or add
+          <code>PWAREHOUSE_USER</code> and <code>PWAREHOUSE_PASS</code> to your Railway Variables tab.
+        </div>
+        {% endif %}
+
+        <form method="POST">
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">pWarehouse8 URL</label>
+            <input type="url" name="url" class="form-control form-control-sm"
+                   value="{{ pw_url }}" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Username</label>
+            <input type="text" name="username" class="form-control form-control-sm"
+                   placeholder="{{ '(from Railway env var)' if pw_configured else 'your username' }}"
+                   autocomplete="username">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Password</label>
+            <input type="password" name="password" class="form-control form-control-sm"
+                   placeholder="{{ '(from Railway env var)' if pw_configured else 'your password' }}"
+                   autocomplete="current-password">
+            <div class="form-text">Leave blank to use the stored environment variable.</div>
+          </div>
+          <div class="d-grid">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-arrow-repeat me-2"></i>Sync Now
+            </button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+
+    <div class="card border-0 bg-light">
+      <div class="card-body small text-muted">
+        <h6 class="fw-semibold mb-2"><i class="bi bi-info-circle me-1"></i>How this works</h6>
+        <ul class="mb-0 ps-3">
+          <li>Connects to pWarehouse8 and downloads <strong>all</strong> bins in the warehouse.</li>
+          <li>Keeps only bins where <strong>PRODUCTO contains "CIRUELA"</strong> — all plum varieties are included automatically.</li>
+          <li>New bins are imported into Goodvalley. Bins already in inventory (same TARJA number) are skipped.</li>
+          <li>Existing bins are never overwritten — edit them manually if needed.</li>
+          <li>Fetching ~10 000 rows may take up to 60 seconds. Please wait.</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

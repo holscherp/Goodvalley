@@ -1,0 +1,218 @@
+"""
+pWarehouse8 (whCLI V8) integration.
+
+Logs in, paginates through all bins, and returns those where
+the PRODUCTO column contains "CIRUELA" (case-insensitive).
+
+Environment variables (set in Railway):
+  PWAREHOUSE_URL   — e.g. http://190.211.168.247:8077
+  PWAREHOUSE_USER  — your pWarehouse8 username
+  PWAREHOUSE_PASS  — your pWarehouse8 password
+"""
+
+import os
+import re
+
+import requests
+
+# ── Column indices in the O16B "Bins en Bodega" grid ──────────────────────────
+COL_TARJA    = 1
+COL_NETO     = 2
+COL_PRODUCTO = 8
+COL_PRODUCTOR = 12
+COL_SERIE    = 15
+COL_SECADO   = 16
+
+DRYING_MAP = {
+    'cancha':        'field',
+    'field drying':  'field',
+    'field':         'field',
+    'horno':         'oven',
+    'oven drying':   'oven',
+    'oven':          'oven',
+    'otro':          'other',
+    'other':         'other',
+}
+
+
+def _row_val(row, idx):
+    """Row dict keys may be int or str depending on JSON serialisation."""
+    v = row.get(idx)
+    if v is None:
+        v = row.get(str(idx))
+    return v
+
+
+def _extract_sid(html):
+    """Try several patterns to pull _S_ID out of the initial page HTML."""
+    patterns = [
+        r"['\"]?_S_ID['\"]?\s*[=:]\s*['\"]([A-Za-z0-9]+)['\"]",
+        r"_S_ID=([A-Za-z0-9]+)",
+        r"Unisessionid['\"\s]*[:=]\s*['\"]?([A-Za-z0-9]+)",
+    ]
+    for pat in patterns:
+        m = re.search(pat, html, re.IGNORECASE)
+        if m:
+            return m.group(1)
+    return None
+
+
+def pwarehouse_login(url=None, username=None, password=None):
+    """
+    Open an authenticated session to pWarehouse8.
+    Returns (requests.Session, session_id, base_url).
+    Raises ValueError with a human-readable message on failure.
+    """
+    base_url = (url or os.environ.get('PWAREHOUSE_URL', '')).rstrip('/')
+    username  = username or os.environ.get('PWAREHOUSE_USER', '')
+    password  = password or os.environ.get('PWAREHOUSE_PASS', '')
+
+    if not base_url:
+        raise ValueError("PWAREHOUSE_URL is not configured.")
+
+    sess = requests.Session()
+    sess.headers.update({'User-Agent': 'Mozilla/5.0 (compatible; Goodvalley-Sync/1.0)'})
+
+    # 1) Load main page — _S_ID is embedded in the initial HTML
+    try:
+        r = sess.get(base_url + '/', timeout=30)
+        r.raise_for_status()
+    except requests.exceptions.ConnectionError:
+        raise ValueError(f"Cannot reach {base_url}. Check that the server is online and accessible.")
+    except requests.exceptions.Timeout:
+        raise ValueError(f"Connection to {base_url} timed out.")
+
+    sid = _extract_sid(r.text)
+    if not sid:
+        raise ValueError(
+            "Could not find _S_ID in pWarehouse8 page. "
+            "The login page structure may have changed."
+        )
+
+    sess.headers['_S_ID'] = sid
+
+    # 2) Submit login credentials
+    login_r = sess.post(
+        base_url + '/HandleEvent',
+        data={
+            'IsEvent': '1',
+            'Obj':     'O1',
+            'Evt':     'login',
+            '_S_ID':   sid,
+            'userID':  username,
+            'pass':    password,
+        },
+        timeout=30,
+    )
+    login_r.raise_for_status()
+
+    # Some whCLI versions return JSON with success:false on bad credentials
+    try:
+        result = login_r.json()
+        if result.get('success') is False:
+            raise ValueError(
+                f"pWarehouse8 rejected the login: {result.get('msg') or result.get('error') or 'incorrect credentials'}"
+            )
+    except (ValueError, AttributeError, requests.exceptions.JSONDecodeError):
+        pass  # Non-JSON response is fine — treat HTTP 200 as success
+
+    return sess, sid, base_url
+
+
+def fetch_ciruela_bins(sess, sid, base_url, page_size=2000):
+    """
+    Fetch all bins from pWarehouse8 and return those where
+    PRODUCTO contains 'CIRUELA'.
+
+    Returns a list of dicts:
+      bin_identifier, producer_name, weight_kg,
+      drying_method, caliber_low, caliber_high, producto
+    """
+    handle_url = base_url + '/HandleEvent'
+    all_rows   = []
+    start      = 0
+    total      = None
+
+    while True:
+        page = start // page_size + 1
+        params = {
+            'IsEvent': '1',
+            'Obj':     'O16B',
+            'Evt':     'data',
+            'options': '1',
+            'page':    str(page),
+            'start':   str(start),
+            'limit':   str(page_size),
+            '_S_ID':   sid,
+        }
+        r = sess.get(handle_url, params=params, timeout=90)
+        r.raise_for_status()
+        data = r.json()
+
+        if not data.get('success'):
+            raise ValueError(f"pWarehouse8 data endpoint returned failure: {data}")
+
+        rows = data.get('rows', [])
+        if not rows:
+            break
+
+        all_rows.extend(rows)
+
+        if total is None:
+            total = int(data.get('results', len(rows)))
+
+        if start + page_size >= total:
+            break
+        start += page_size
+
+    # Filter to ciruelas and map to Bin fields
+    bins = []
+    for row in all_rows:
+        producto = str(_row_val(row, COL_PRODUCTO) or '').strip().upper()
+        if 'CIRUELA' not in producto:
+            continue
+
+        tarja = _row_val(row, COL_TARJA)
+        if tarja is None:
+            continue
+        # Excel often delivers integers as floats (e.g. 23013023260.0)
+        if isinstance(tarja, float):
+            tarja_str = str(int(tarja))
+        else:
+            tarja_str = str(tarja).strip()
+
+        neto = _row_val(row, COL_NETO)
+        try:
+            weight = float(neto) if neto is not None else 0.0
+        except (ValueError, TypeError):
+            weight = 0.0
+
+        productor = _row_val(row, COL_PRODUCTOR)
+
+        cal_low = cal_high = None
+        serie = _row_val(row, COL_SERIE)
+        if serie:
+            s = str(serie).strip().upper()
+            if '/' in s:
+                try:
+                    lo, hi = s.split('/', 1)
+                    cal_low, cal_high = int(lo.strip()), int(hi.strip())
+                except (ValueError, TypeError):
+                    pass
+
+        secado   = _row_val(row, COL_SECADO)
+        drying   = DRYING_MAP.get(str(secado).lower().strip()) if secado else None
+        if not drying:
+            continue  # Skip rows whose drying method we can't map
+
+        bins.append({
+            'bin_identifier': tarja_str,
+            'producer_name':  str(productor).strip() if productor else '',
+            'weight_kg':      weight,
+            'drying_method':  drying,
+            'caliber_low':    cal_low,
+            'caliber_high':   cal_high,
+            'producto':       producto,
+        })
+
+    return bins, total or 0

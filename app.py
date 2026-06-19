@@ -8,6 +8,10 @@ import openpyxl
 
 from db import db
 
+PWAREHOUSE_URL  = os.environ.get('PWAREHOUSE_URL',  'http://190.211.168.247:8077')
+PWAREHOUSE_USER = os.environ.get('PWAREHOUSE_USER', '')
+PWAREHOUSE_PASS = os.environ.get('PWAREHOUSE_PASS', '')
+
 DRYING_METHODS = {
     'oven': 'Oven Drying',
     'field': 'Field Drying',
@@ -406,6 +410,68 @@ def create_app():
             return redirect(url_for('list_bins'))
 
         return render_template('bins/import.html')
+
+    @app.route('/bins/sync', methods=['GET', 'POST'])
+    def sync_bins():
+        from models import Bin
+        from scraper import pwarehouse_login, fetch_ciruela_bins
+
+        if request.method == 'POST':
+            url      = request.form.get('url',      '').strip() or PWAREHOUSE_URL
+            username = request.form.get('username', '').strip() or PWAREHOUSE_USER
+            password = request.form.get('password', '').strip() or PWAREHOUSE_PASS
+
+            try:
+                sess, sid, base_url  = pwarehouse_login(url, username, password)
+                remote_bins, pw_total = fetch_ciruela_bins(sess, sid, base_url)
+            except Exception as e:
+                flash(f'Sync failed: {e}', 'danger')
+                return render_template(
+                    'bins/sync.html',
+                    pw_url=PWAREHOUSE_URL,
+                    pw_user=PWAREHOUSE_USER,
+                    pw_configured=bool(PWAREHOUSE_USER),
+                )
+
+            added   = 0
+            skipped = 0
+            errors  = []
+
+            for b in remote_bins:
+                if Bin.query.filter_by(bin_identifier=b['bin_identifier']).first():
+                    skipped += 1
+                    continue
+                try:
+                    db.session.add(Bin(
+                        bin_identifier=b['bin_identifier'],
+                        producer_name=b['producer_name'],
+                        weight_kg=b['weight_kg'],
+                        drying_method=b['drying_method'],
+                        caliber_low=b['caliber_low'],
+                        caliber_high=b['caliber_high'],
+                    ))
+                    added += 1
+                except Exception as e:
+                    errors.append(f"{b['bin_identifier']}: {e}")
+
+            db.session.commit()
+
+            flash(
+                f'Sync complete: {added} new bins imported, {skipped} already in inventory. '
+                f'({len(remote_bins)} ciruela bins found out of {pw_total} total in pWarehouse8.)',
+                'success',
+            )
+            for msg in errors[:10]:
+                flash(msg, 'warning')
+
+            return redirect(url_for('list_bins'))
+
+        return render_template(
+            'bins/sync.html',
+            pw_url=PWAREHOUSE_URL,
+            pw_user=PWAREHOUSE_USER,
+            pw_configured=bool(PWAREHOUSE_USER),
+        )
 
     return app
 
