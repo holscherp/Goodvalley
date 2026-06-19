@@ -9,7 +9,7 @@ import openpyxl
 from db import db
 
 PWAREHOUSE_URL  = os.environ.get('PWAREHOUSE_URL',  'http://190.211.168.247:8077')
-PWAREHOUSE_USER = os.environ.get('PWAREHOUSE_USER', '')
+PWAREHOUSE_RUT  = os.environ.get('PWAREHOUSE_RUT',  '')
 PWAREHOUSE_PASS = os.environ.get('PWAREHOUSE_PASS', '')
 
 DRYING_METHODS = {
@@ -419,8 +419,8 @@ def create_app():
             return render_template(
                 'bins/sync.html',
                 pw_url=PWAREHOUSE_URL,
-                pw_user=PWAREHOUSE_USER,
-                pw_configured=bool(PWAREHOUSE_USER),
+                pw_user=PWAREHOUSE_RUT,
+                pw_configured=bool(PWAREHOUSE_RUT),
             )
 
         try:
@@ -431,25 +431,19 @@ def create_app():
             from models import Bin
             from scraper import pwarehouse_login, fetch_ciruela_bins
 
-            url        = request.form.get('url',        '').strip() or PWAREHOUSE_URL
-            session_id = request.form.get('session_id', '').strip()
-            username   = request.form.get('username',   '').strip() or PWAREHOUSE_USER
-            password   = request.form.get('password',   '').strip() or PWAREHOUSE_PASS
+            url      = request.form.get('url',      '').strip() or PWAREHOUSE_URL
+            rut      = request.form.get('rut',      '').strip() or PWAREHOUSE_RUT
+            password = request.form.get('password', '').strip() or PWAREHOUSE_PASS
 
-            if session_id:
-                sess = _req.Session()
-                sess.headers.update({'User-Agent': 'Mozilla/5.0'})
-                sid      = session_id
-                base_url = url
-            else:
-                if not username or not password:
-                    flash(
-                        'Enter your pWarehouse8 credentials, or paste a Session ID '
-                        'copied from your browser.',
-                        'danger',
-                    )
-                    return _render()
-                sess, sid, base_url = pwarehouse_login(url, username, password)
+            if not rut or not password:
+                flash(
+                    'RUT and password are required. Add PWAREHOUSE_RUT and PWAREHOUSE_PASS '
+                    'to Railway Variables, or enter them in the form.',
+                    'danger',
+                )
+                return _render()
+
+            sess, sid, base_url = pwarehouse_login(url, rut, password)
 
             remote_bins, pw_total = fetch_ciruela_bins(sess, sid, base_url)
 

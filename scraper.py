@@ -85,15 +85,29 @@ def _extract_sid(html):
     return None
 
 
-def pwarehouse_login(url=None, username=None, password=None):
+def _fp_encode(value):
+    """
+    whCLI field-value encoding: values in _fp_ are prefixed with space+STX+STX.
+    Captured from browser: field value " \x02\x02actualvalue" sent in _fp_.
+    """
+    return ' \x02\x02' + value
+
+
+def pwarehouse_login(url=None, rut=None, password=None):
     """
     Open an authenticated session to pWarehouse8.
     Returns (requests.Session, session_id, base_url).
-    Raises ValueError with a human-readable message on failure.
+
+    Login format reverse-engineered from browser Network capture:
+      POST /HandleEvent
+      Ajax=1&IsEvent=1&Obj=O23&Evt=click&this=O23&_S_ID={sid}
+      &_fp_=&O16={enc_rut}&O17={enc_pass}&_seq_=a&_uo_=O0
+
+    Field encoding: each value is prefixed with " \\x02\\x02" before URL-encoding.
     """
     base_url = (url or os.environ.get('PWAREHOUSE_URL', '')).rstrip('/')
-    username  = username or os.environ.get('PWAREHOUSE_USER', '')
-    password  = password or os.environ.get('PWAREHOUSE_PASS', '')
+    rut      = rut      or os.environ.get('PWAREHOUSE_RUT',  '')
+    password = password or os.environ.get('PWAREHOUSE_PASS', '')
 
     if not base_url:
         raise ValueError("PWAREHOUSE_URL is not configured.")
@@ -101,49 +115,58 @@ def pwarehouse_login(url=None, username=None, password=None):
     sess = requests.Session()
     sess.headers.update({'User-Agent': 'Mozilla/5.0 (compatible; Goodvalley-Sync/1.0)'})
 
-    # 1) Load main page — _S_ID is embedded in the initial HTML
+    # 1) GET initial page — _S_ID is embedded in the HTML
     try:
         r = sess.get(base_url + '/', timeout=30)
         r.raise_for_status()
     except requests.exceptions.ConnectionError:
-        raise ValueError(f"Cannot reach {base_url}. Check that the server is online and accessible.")
+        raise ValueError(
+            f"Cannot reach {base_url}. "
+            "Check that the pWarehouse8 server is online and this Railway service can access it."
+        )
     except requests.exceptions.Timeout:
         raise ValueError(f"Connection to {base_url} timed out.")
 
     sid = _extract_sid(r.text)
     if not sid:
         raise ValueError(
-            "Could not find _S_ID in pWarehouse8 page. "
-            "The login page structure may have changed."
+            "Could not find _S_ID in the pWarehouse8 login page. "
+            "The page structure may have changed — contact support."
         )
 
-    sess.headers['_S_ID'] = sid
+    # 2) POST login button click (Obj=O23, Evt=click).
+    #    _S_ID goes in the POST body (not header).
+    #    _fp_ contains RUT (O16) and password (O17), each prefixed with space+STX+STX.
+    fp = '&O16=' + _fp_encode(rut) + '&O17=' + _fp_encode(password)
 
-    # 2) Submit login credentials
     login_r = sess.post(
         base_url + '/HandleEvent',
         data={
+            'Ajax':    '1',
             'IsEvent': '1',
-            'Obj':     'O1',
-            'Evt':     'login',
+            'Obj':     'O23',
+            'Evt':     'click',
+            'this':    'O23',
             '_S_ID':   sid,
-            'userID':  username,
-            'pass':    password,
+            '_fp_':    fp,
+            '_seq_':   'a',
+            '_uo_':    'O0',
         },
         timeout=30,
     )
     login_r.raise_for_status()
 
-    # Some whCLI versions return JSON with success:false on bad credentials
+    # pWarehouse8 may return {success:false} or an HTML redirect on bad credentials
     try:
-        result = login_r.json()
-    except (json.JSONDecodeError, ValueError):
-        result = None  # HTML or non-JSON response — treat HTTP 200 as success
-    if result is not None and result.get('success') is False:
-        raise ValueError(
-            f"pWarehouse8 rejected the login: "
-            f"{result.get('msg') or result.get('error') or 'incorrect credentials'}"
-        )
+        result = _parse_response(login_r)
+        if result.get('success') is False:
+            raise ValueError(
+                "pWarehouse8 rejected the login — check your RUT and password."
+            )
+    except ValueError:
+        raise
+    except Exception:
+        pass  # Non-JSON / HTML response after login is treated as success
 
     return sess, sid, base_url
 
