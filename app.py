@@ -413,38 +413,50 @@ def create_app():
 
     @app.route('/bins/sync', methods=['GET', 'POST'])
     def sync_bins():
+        import requests as _req
         from models import Bin
         from scraper import pwarehouse_login, fetch_ciruela_bins
 
-        if request.method == 'POST':
-            url      = request.form.get('url',      '').strip() or PWAREHOUSE_URL
-            username = request.form.get('username', '').strip() or PWAREHOUSE_USER
-            password = request.form.get('password', '').strip() or PWAREHOUSE_PASS
+        def _render(error=None):
+            return render_template(
+                'bins/sync.html',
+                pw_url=PWAREHOUSE_URL,
+                pw_user=PWAREHOUSE_USER,
+                pw_configured=bool(PWAREHOUSE_USER),
+            )
 
-            if not username or not password:
-                flash(
-                    'Enter your pWarehouse8 username and password in the form, '
-                    'or add PWAREHOUSE_USER and PWAREHOUSE_PASS to Railway Variables.',
-                    'danger',
-                )
-                return render_template(
-                    'bins/sync.html',
-                    pw_url=PWAREHOUSE_URL,
-                    pw_user=PWAREHOUSE_USER,
-                    pw_configured=bool(PWAREHOUSE_USER),
-                )
+        if request.method == 'POST':
+            url        = request.form.get('url',        '').strip() or PWAREHOUSE_URL
+            session_id = request.form.get('session_id', '').strip()
+            username   = request.form.get('username',   '').strip() or PWAREHOUSE_USER
+            password   = request.form.get('password',   '').strip() or PWAREHOUSE_PASS
 
             try:
-                sess, sid, base_url  = pwarehouse_login(url, username, password)
+                if session_id:
+                    # Use a pre-existing browser session directly — no login needed
+                    sess = _req.Session()
+                    sess.headers.update({
+                        'User-Agent': 'Mozilla/5.0',
+                        '_S_ID': session_id,
+                        'Unisessionid': session_id,
+                    })
+                    sid      = session_id
+                    base_url = url
+                else:
+                    if not username or not password:
+                        flash(
+                            'Enter your pWarehouse8 credentials, or paste a Session ID '
+                            'copied from your browser.',
+                            'danger',
+                        )
+                        return _render()
+                    sess, sid, base_url = pwarehouse_login(url, username, password)
+
                 remote_bins, pw_total = fetch_ciruela_bins(sess, sid, base_url)
+
             except Exception as e:
                 flash(f'Sync failed: {e}', 'danger')
-                return render_template(
-                    'bins/sync.html',
-                    pw_url=PWAREHOUSE_URL,
-                    pw_user=PWAREHOUSE_USER,
-                    pw_configured=bool(PWAREHOUSE_USER),
-                )
+                return _render()
 
             added   = 0
             skipped = 0
@@ -479,12 +491,7 @@ def create_app():
 
             return redirect(url_for('list_bins'))
 
-        return render_template(
-            'bins/sync.html',
-            pw_url=PWAREHOUSE_URL,
-            pw_user=PWAREHOUSE_USER,
-            pw_configured=bool(PWAREHOUSE_USER),
-        )
+        return _render()
 
     return app
 
