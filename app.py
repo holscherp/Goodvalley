@@ -640,6 +640,8 @@ def _migrate(db_obj):
         'ALTER TABLE bins ADD COLUMN IF NOT EXISTS contenedor VARCHAR(100)',
         'ALTER TABLE bins ADD COLUMN IF NOT EXISTS temporada VARCHAR(10)',
         "ALTER TABLE bins ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'available'",
+        # Old drying_method column has NOT NULL — make it nullable so new inserts work
+        'ALTER TABLE bins ALTER COLUMN drying_method DROP NOT NULL',
         # orders — new columns
         'ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer VARCHAR(200)',
         'ALTER TABLE orders ADD COLUMN IF NOT EXISTS reference VARCHAR(100)',
