@@ -421,6 +421,19 @@ def create_app():
             username = request.form.get('username', '').strip() or PWAREHOUSE_USER
             password = request.form.get('password', '').strip() or PWAREHOUSE_PASS
 
+            if not username or not password:
+                flash(
+                    'Enter your pWarehouse8 username and password in the form, '
+                    'or add PWAREHOUSE_USER and PWAREHOUSE_PASS to Railway Variables.',
+                    'danger',
+                )
+                return render_template(
+                    'bins/sync.html',
+                    pw_url=PWAREHOUSE_URL,
+                    pw_user=PWAREHOUSE_USER,
+                    pw_configured=bool(PWAREHOUSE_USER),
+                )
+
             try:
                 sess, sid, base_url  = pwarehouse_login(url, username, password)
                 remote_bins, pw_total = fetch_ciruela_bins(sess, sid, base_url)

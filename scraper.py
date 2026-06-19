@@ -10,6 +10,7 @@ Environment variables (set in Railway):
   PWAREHOUSE_PASS  — your pWarehouse8 password
 """
 
+import json
 import os
 import re
 
@@ -109,12 +110,13 @@ def pwarehouse_login(url=None, username=None, password=None):
     # Some whCLI versions return JSON with success:false on bad credentials
     try:
         result = login_r.json()
-        if result.get('success') is False:
-            raise ValueError(
-                f"pWarehouse8 rejected the login: {result.get('msg') or result.get('error') or 'incorrect credentials'}"
-            )
-    except (ValueError, AttributeError, requests.exceptions.JSONDecodeError):
-        pass  # Non-JSON response is fine — treat HTTP 200 as success
+    except (json.JSONDecodeError, ValueError):
+        result = None  # HTML or non-JSON response — treat HTTP 200 as success
+    if result is not None and result.get('success') is False:
+        raise ValueError(
+            f"pWarehouse8 rejected the login: "
+            f"{result.get('msg') or result.get('error') or 'incorrect credentials'}"
+        )
 
     return sess, sid, base_url
 
@@ -147,7 +149,16 @@ def fetch_ciruela_bins(sess, sid, base_url, page_size=2000):
         }
         r = sess.get(handle_url, params=params, timeout=90)
         r.raise_for_status()
-        data = r.json()
+        try:
+            data = r.json()
+        except (json.JSONDecodeError, ValueError):
+            preview = r.text[:120].strip()
+            if '<html' in preview.lower() or '<!doctype' in preview.lower():
+                raise ValueError(
+                    "pWarehouse8 returned the login page instead of data — "
+                    "the credentials may be wrong or the session was rejected."
+                )
+            raise ValueError(f"pWarehouse8 returned unexpected data: {preview}")
 
         if not data.get('success'):
             raise ValueError(f"pWarehouse8 data endpoint returned failure: {data}")
