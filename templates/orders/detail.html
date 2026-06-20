@@ -49,7 +49,7 @@
   </div>
   <div class="status-actions">
     <span class="badge badge-{{ order.status }} big">{{ order.status_label }}</span>
-    {% if order.status in ('open', 'confirmed', 'fulfilled', 'cancelled') %}
+    {% if order.status in ('open', 'confirmed') %}
     <form method="post" action="{{ url_for('update_order_status', order_id=order.id) }}" class="inline">
       {% if order.status == 'open' %}
         <button class="btn btn-primary" name="status" value="confirmed">Confirmar orden</button>
@@ -60,6 +60,14 @@
         <button class="btn btn-danger" name="status" value="cancelled"
                 onclick="return confirm('Cancelar liberará todos los items asignados. ¿Seguro?')">Cancelar</button>
       {% endif %}
+    </form>
+    {% endif %}
+    {% if order.status in ('fulfilled', 'cancelled') %}
+    <form method="post" action="{{ url_for('delete_order', order_id=order.id) }}" class="inline">
+      <button class="btn btn-danger"
+              onclick="return confirm('Eliminar esta orden permanentemente. Esta acción no se puede deshacer. ¿Seguro?')">
+        🗑 Eliminar orden
+      </button>
     </form>
     {% endif %}
   </div>

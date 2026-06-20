@@ -625,6 +625,20 @@ def create_app():
         flash('Liberado.', 'ok')
         return redirect(url_for('order_detail', order_id=order_id))
 
+    @app.route('/orders/<int:order_id>/delete', methods=['POST'])
+    def delete_order(order_id):
+        from models import Order
+
+        order = Order.query.get_or_404(order_id)
+        if order.status not in ('fulfilled', 'cancelled'):
+            flash('Solo se pueden eliminar órdenes cumplidas o canceladas.', 'err')
+            return redirect(url_for('order_detail', order_id=order_id))
+
+        db.session.delete(order)
+        db.session.commit()
+        flash(f'Orden #{order_id} eliminada.', 'ok')
+        return redirect(url_for('list_orders'))
+
     @app.route('/orders/<int:order_id>/dispatch', methods=['GET', 'POST'])
     def dispatch_order(order_id):
         from models import Order, Bin, Allocation, Excedente, DRYING_LABELS
