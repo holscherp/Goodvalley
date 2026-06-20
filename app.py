@@ -641,12 +641,22 @@ def create_app():
 
     @app.route('/orders/<int:order_id>/delete', methods=['POST'])
     def delete_order(order_id):
-        from models import Order
+        from models import Order, Excedente
 
         order = Order.query.get_or_404(order_id)
         if order.status not in ('fulfilled', 'cancelled'):
             flash('Solo se pueden eliminar órdenes cumplidas o canceladas.', 'err')
             return redirect(url_for('order_detail', order_id=order_id))
+
+        # Null out FK references from excedentes → order lines before cascade delete
+        line_ids = [l.id for l in order.lines]
+        if line_ids:
+            Excedente.query.filter(
+                Excedente.source_line_id.in_(line_ids)
+            ).update({'source_line_id': None, 'source_order_id': None},
+                     synchronize_session=False)
+        Excedente.query.filter_by(source_order_id=order_id).update(
+            {'source_order_id': None}, synchronize_session=False)
 
         db.session.delete(order)
         db.session.commit()
