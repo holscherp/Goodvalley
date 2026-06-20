@@ -173,21 +173,28 @@
 
     {% if search_line_id == line.id %}
       {% if search_bins or search_excedentes %}
-      <form method="post" action="{{ url_for('allocate_bins', order_id=order.id, line_id=line.id) }}">
+      <form method="post" action="{{ url_for('allocate_bins', order_id=order.id, line_id=line.id) }}"
+            id="alloc-form-{{ line.id }}">
+
+        <div class="sel-bar">
+          <span>Selección: <strong id="sel-count-{{ line.id }}">0</strong> elemento(s) · <strong id="sel-kg-{{ line.id }}">0,0</strong> kg</span>
+          <button class="btn btn-primary" type="submit">Asignar seleccionados</button>
+        </div>
 
         {% if search_bins %}
         <p class="muted" style="margin:8px 0 4px"><strong>Bins disponibles</strong></p>
         <table class="grid tight selectable">
           <thead><tr>
             <th><input type="checkbox" id="chk-all-{{ line.id }}"
-                       onclick="document.querySelectorAll('.chk-{{ line.id }}').forEach(c=>c.checked=this.checked)"></th>
+                       onchange="document.querySelectorAll('.chk-{{ line.id }}').forEach(c=>c.checked=this.checked);updateSel{{ line.id }}()"></th>
             <th>Tarja</th><th>Producto</th><th>Calibre</th><th>Secado</th>
             <th class="num">kg</th><th class="num">Hum</th><th>Productor</th><th>Temp.</th>
           </tr></thead>
           <tbody>
           {% for b in search_bins %}
-            <tr onclick="this.querySelector('input').click()">
-              <td><input type="checkbox" class="chk-{{ line.id }}" name="bin_ids" value="{{ b.id }}"></td>
+            <tr onclick="this.querySelector('input[type=checkbox]').click()">
+              <td><input type="checkbox" class="chk-{{ line.id }}" name="bin_ids" value="{{ b.id }}"
+                         data-kg="{{ b.weight_kg }}" onchange="updateSel{{ line.id }}()"></td>
               <td class="mono">{{ b.bin_identifier }}</td>
               <td>{{ b.producto or '—' }}</td>
               <td>{{ b.caliber or 'N/A' }}</td>
@@ -207,14 +214,15 @@
         <table class="grid tight selectable">
           <thead><tr>
             <th><input type="checkbox" id="chk-exc-{{ line.id }}"
-                       onclick="document.querySelectorAll('.chke-{{ line.id }}').forEach(c=>c.checked=this.checked)"></th>
+                       onchange="document.querySelectorAll('.chke-{{ line.id }}').forEach(c=>c.checked=this.checked);updateSel{{ line.id }}()"></th>
             <th>Origen</th><th>Producto</th><th>Calibre</th><th>Secado</th>
             <th class="num">kg</th><th class="num">Cajas</th><th>Temp.</th>
           </tr></thead>
           <tbody>
           {% for s in search_excedentes %}
-            <tr class="surplus-row" onclick="this.querySelector('input').click()">
-              <td><input type="checkbox" class="chke-{{ line.id }}" name="surplus_ids" value="{{ s.id }}"></td>
+            <tr class="surplus-row" onclick="this.querySelector('input[type=checkbox]').click()">
+              <td><input type="checkbox" class="chke-{{ line.id }}" name="surplus_ids" value="{{ s.id }}"
+                         data-kg="{{ s.weight_kg }}" onchange="updateSel{{ line.id }}()"></td>
               <td><span class="pill pill-exc">Excedente</span> Orden #{{ s.source_order_id }}</td>
               <td>{{ s.producto or '—' }}</td>
               <td>{{ s.caliber or 'N/A' }}</td>
@@ -228,8 +236,18 @@
         </table>
         {% endif %}
 
-        <button class="btn btn-primary" style="margin-top:8px">Asignar seleccionados</button>
+        <button class="btn btn-primary" style="margin-top:8px" type="submit">Asignar seleccionados</button>
       </form>
+      <script>
+      function updateSel{{ line.id }}() {
+        var boxes = document.querySelectorAll('#alloc-form-{{ line.id }} input[data-kg]');
+        var count = 0, kg = 0;
+        boxes.forEach(function(c) { if (c.checked) { count++; kg += parseFloat(c.dataset.kg); } });
+        document.getElementById('sel-count-{{ line.id }}').textContent = count;
+        document.getElementById('sel-kg-{{ line.id }}').textContent =
+          kg.toLocaleString('es-CL', {minimumFractionDigits:1, maximumFractionDigits:1});
+      }
+      </script>
       {% else %}
         <p class="muted" style="margin:8px 0">No hay bins ni excedentes disponibles con esos criterios.</p>
       {% endif %}
