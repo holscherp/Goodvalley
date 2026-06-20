@@ -625,6 +625,20 @@ def create_app():
         flash('Liberado.', 'ok')
         return redirect(url_for('order_detail', order_id=order_id))
 
+    @app.route('/reset', methods=['POST'])
+    def reset_inventory():
+        from models import Bin, Allocation
+
+        if request.form.get('passcode') != '001083748':
+            flash('Código incorrecto.', 'err')
+            return redirect(url_for('index'))
+
+        Allocation.query.filter(Allocation.bin_id.isnot(None)).delete(synchronize_session=False)
+        Bin.query.delete(synchronize_session=False)
+        db.session.commit()
+        flash('Inventario reseteado — todos los bins han sido eliminados.', 'ok')
+        return redirect(url_for('index'))
+
     @app.route('/orders/<int:order_id>/delete', methods=['POST'])
     def delete_order(order_id):
         from models import Order

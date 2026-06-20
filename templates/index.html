@@ -48,4 +48,14 @@
   <p>No hay bins disponibles aún. Usá <strong>↻ Sync (archivo)</strong> o <strong>⚡ Sync en vivo</strong> para importar.</p>
 </div>
 {% endif %}
+
+<div style="text-align:right; margin-top:80px; padding-bottom:8px;">
+  <form method="post" action="{{ url_for('reset_inventory') }}" id="reset-form">
+    <input type="hidden" name="passcode" id="reset-code">
+    <button type="button" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:11px;padding:0;opacity:0.6;"
+      onclick="var c=prompt('Código de acceso:');if(c!==null){document.getElementById('reset-code').value=c;document.getElementById('reset-form').submit();}">
+      reset
+    </button>
+  </form>
+</div>
 {% endblock %}
