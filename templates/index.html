@@ -42,7 +42,7 @@
       <td class="num">{{ cnt }}</td>
       <td class="num">{{ "{:,.1f}".format(kg or 0) }}</td>
       <td>
-        <a class="mini" href="{{ url_for('list_bins', caliber=caliber, drying=drying, status='available') }}">ver bins →</a>
+        <a class="open-btn" href="{{ url_for('list_bins', caliber=caliber, drying=drying, status='available') }}">VER BINS</a>
       </td>
     </tr>
   {% endfor %}
