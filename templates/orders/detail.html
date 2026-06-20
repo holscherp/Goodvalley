@@ -56,10 +56,9 @@
         <button class="btn btn-danger" name="status" value="cancelled"
                 onclick="return confirm('Cancelar liberará todos los bins asignados. ¿Seguro?')">Cancelar</button>
       {% elif order.status == 'confirmed' %}
-        <button class="btn btn-primary" name="status" value="fulfilled"
-                onclick="return confirm('Marcar como cumplida. Los bins asignados pasan a Despachado.')">Cumplir / Despachar</button>
+        <a class="btn btn-primary" href="{{ url_for('dispatch_order', order_id=order.id) }}">Cumplir / Despachar</a>
         <button class="btn btn-danger" name="status" value="cancelled"
-                onclick="return confirm('Cancelar liberará todos los bins asignados. ¿Seguro?')">Cancelar</button>
+                onclick="return confirm('Cancelar liberará todos los items asignados. ¿Seguro?')">Cancelar</button>
       {% endif %}
     </form>
     {% endif %}
@@ -94,28 +93,48 @@
   {% if line.allocations %}
   <table class="grid tight">
     <thead><tr>
-      <th>Tarja</th><th>Producto</th><th>Calibre</th><th>Secado</th>
-      <th class="num">kg</th><th class="num">Hum</th><th>Productor</th><th></th>
+      <th>Tarja / Origen</th><th>Producto</th><th>Calibre</th><th>Secado</th>
+      <th class="num">kg</th><th class="num">Hum / Cajas</th><th>Productor</th><th></th>
     </tr></thead>
     <tbody>
     {% for a in line.allocations %}
-      {% set b = a.bin %}
-      <tr>
-        <td class="mono">{{ b.bin_identifier }}</td>
-        <td>{{ b.producto or '—' }}</td>
-        <td>{{ b.caliber or 'N/A' }}</td>
-        <td><span class="pill pill-{{ b.drying }}">{{ b.drying_label }}</span></td>
-        <td class="num">{{ b.weight_kg }}</td>
-        <td class="num">{{ b.humedad if b.humedad is not none else '—' }}</td>
-        <td>{{ b.producer_name }}</td>
-        <td>
-          {% if order.status in ('open', 'confirmed') %}
-          <form method="post" action="{{ url_for('release_bin', alloc_id=a.id) }}" class="inline">
-            <button class="mini-btn danger" title="Liberar este bin">✕ liberar</button>
-          </form>
-          {% endif %}
-        </td>
-      </tr>
+      {% if a.bin %}
+        {% set b = a.bin %}
+        <tr>
+          <td class="mono">{{ b.bin_identifier }}</td>
+          <td>{{ b.producto or '—' }}</td>
+          <td>{{ b.caliber or 'N/A' }}</td>
+          <td><span class="pill pill-{{ b.drying }}">{{ b.drying_label }}</span></td>
+          <td class="num">{{ b.weight_kg }}</td>
+          <td class="num">{{ b.humedad if b.humedad is not none else '—' }}</td>
+          <td>{{ b.producer_name }}</td>
+          <td>
+            {% if order.status in ('open', 'confirmed') %}
+            <form method="post" action="{{ url_for('release_bin', alloc_id=a.id) }}" class="inline">
+              <button class="mini-btn danger" title="Liberar este bin">✕ liberar</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% elif a.surplus %}
+        {% set s = a.surplus %}
+        <tr class="surplus-row">
+          <td><span class="pill pill-exc">Excedente</span></td>
+          <td>{{ s.producto or '—' }}</td>
+          <td>{{ s.caliber or 'N/A' }}</td>
+          <td><span class="pill pill-{{ s.drying }}">{{ s.drying_label }}</span></td>
+          <td class="num">{{ s.weight_kg }}</td>
+          <td class="num">{{ s.boxes if s.boxes is not none else '—' }}</td>
+          <td>Orden #{{ s.source_order_id or '—' }}</td>
+          <td>
+            {% if order.status in ('open', 'confirmed') %}
+            <form method="post" action="{{ url_for('release_bin', alloc_id=a.id) }}" class="inline">
+              <button class="mini-btn danger" title="Liberar este excedente">✕ liberar</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endif %}
     {% endfor %}
     </tbody>
   </table>
@@ -144,9 +163,12 @@
       <button class="btn btn-primary" style="align-self:flex-end">Buscar</button>
     </form>
 
-    {% if search_line_id == line.id and search_results is defined %}
-      {% if search_results %}
+    {% if search_line_id == line.id %}
+      {% if search_bins or search_excedentes %}
       <form method="post" action="{{ url_for('allocate_bins', order_id=order.id, line_id=line.id) }}">
+
+        {% if search_bins %}
+        <p class="muted" style="margin:8px 0 4px"><strong>Bins disponibles</strong></p>
         <table class="grid tight selectable">
           <thead><tr>
             <th><input type="checkbox" id="chk-all-{{ line.id }}"
@@ -155,7 +177,7 @@
             <th class="num">kg</th><th class="num">Hum</th><th>Productor</th><th>Temp.</th>
           </tr></thead>
           <tbody>
-          {% for b in search_results %}
+          {% for b in search_bins %}
             <tr onclick="this.querySelector('input').click()">
               <td><input type="checkbox" class="chk-{{ line.id }}" name="bin_ids" value="{{ b.id }}"></td>
               <td class="mono">{{ b.bin_identifier }}</td>
@@ -170,10 +192,38 @@
           {% endfor %}
           </tbody>
         </table>
-        <button class="btn btn-primary">Asignar seleccionados</button>
+        {% endif %}
+
+        {% if search_excedentes %}
+        <p class="muted" style="margin:12px 0 4px"><strong>Excedentes disponibles</strong></p>
+        <table class="grid tight selectable">
+          <thead><tr>
+            <th><input type="checkbox" id="chk-exc-{{ line.id }}"
+                       onclick="document.querySelectorAll('.chke-{{ line.id }}').forEach(c=>c.checked=this.checked)"></th>
+            <th>Origen</th><th>Producto</th><th>Calibre</th><th>Secado</th>
+            <th class="num">kg</th><th class="num">Cajas</th><th>Temp.</th>
+          </tr></thead>
+          <tbody>
+          {% for s in search_excedentes %}
+            <tr class="surplus-row" onclick="this.querySelector('input').click()">
+              <td><input type="checkbox" class="chke-{{ line.id }}" name="surplus_ids" value="{{ s.id }}"></td>
+              <td><span class="pill pill-exc">Excedente</span> Orden #{{ s.source_order_id }}</td>
+              <td>{{ s.producto or '—' }}</td>
+              <td>{{ s.caliber or 'N/A' }}</td>
+              <td><span class="pill pill-{{ s.drying }}">{{ s.drying_label }}</span></td>
+              <td class="num">{{ s.weight_kg }}</td>
+              <td class="num">{{ s.boxes if s.boxes is not none else '—' }}</td>
+              <td>{{ s.temporada or '—' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+
+        <button class="btn btn-primary" style="margin-top:8px">Asignar seleccionados</button>
       </form>
       {% else %}
-        <p class="muted" style="margin:8px 0">No hay bins disponibles con esos criterios.</p>
+        <p class="muted" style="margin:8px 0">No hay bins ni excedentes disponibles con esos criterios.</p>
       {% endif %}
     {% endif %}
   </details>

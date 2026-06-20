@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block title %}Despachar Orden #{{ order.id }} · Goodvalley{% endblock %}
+
+{% block content %}
+<div class="row-between">
+  <div>
+    <a class="back" href="{{ url_for('order_detail', order_id=order.id) }}">← Orden #{{ order.id }}</a>
+    <h1>Despachar Orden #{{ order.id }} · {{ order.customer }}</h1>
+    <p class="muted">Registrá el excedente (kg sobrantes) por línea antes de confirmar el despacho.</p>
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('dispatch_order', order_id=order.id) }}">
+  {% for line in order.lines %}
+  <section class="line-card {{ 'satisfied' if line.satisfied }}">
+    <div class="line-head">
+      <div class="line-spec">
+        <span class="spec-main">{{ line.spec_label }}</span>
+        <span class="spec-sub">
+          {% if line.pitted %}sin carozo · {% endif %}
+          {% if line.temporada %}temporada {{ line.temporada }} · {% endif %}
+          {% if line.max_humedad %}hum máx {{ line.max_humedad }}% · {% endif %}
+          {{ line.allocations | length }} bins/excedentes asignados
+        </span>
+      </div>
+      <div class="line-progress">
+        <div class="bar"><div class="bar-fill" style="width:{{ line.pct }}%"></div></div>
+        <div class="bar-lbl">
+          <strong>{{ "{:,.1f}".format(line.allocated_kg) }}</strong>
+          / {{ "{:,.1f}".format(line.target_kg) }} kg asignados
+        </div>
+      </div>
+    </div>
+
+    <div class="dispatch-exc-fields">
+      <div class="fld">
+        <label>Excedente (kg sobrantes a registrar como disponibles)</label>
+        <input type="number" step="0.1" min="0" name="exc_kg_{{ line.id }}" value="" placeholder="0">
+      </div>
+      <div class="fld">
+        <label>Cajas (opcional)</label>
+        <input type="number" min="0" name="exc_boxes_{{ line.id }}" placeholder="—">
+      </div>
+    </div>
+  </section>
+  {% endfor %}
+
+  <div class="actions" style="margin-top:24px;display:flex;gap:12px">
+    <a class="btn btn-ghost" href="{{ url_for('order_detail', order_id=order.id) }}">Cancelar</a>
+    <button class="btn btn-primary"
+            onclick="return confirm('Confirmar despacho. Los bins pasarán a Despachado y los excedentes quedarán disponibles. ¿Seguro?')">
+      Confirmar despacho →
+    </button>
+  </div>
+</form>
+{% endblock %}

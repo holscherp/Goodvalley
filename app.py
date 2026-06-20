@@ -34,7 +34,7 @@ def create_app():
     db.init_app(app)
 
     with app.app_context():
-        from models import Bin, Order, OrderLine, Allocation  # noqa: F401
+        from models import Bin, Order, OrderLine, Allocation, Excedente  # noqa: F401
         db.create_all()
 
         _migrate(db)
@@ -476,20 +476,24 @@ def create_app():
 
     @app.route('/orders/<int:order_id>')
     def order_detail(order_id):
-        from models import Order, Bin, CALIBER_OPTIONS, DRYING_LABELS, Allocation
+        from models import Order, Bin, CALIBER_OPTIONS, DRYING_LABELS, Allocation, Excedente
 
         order = Order.query.get_or_404(order_id)
 
-        # Optional bin search for a specific line
         search_line_id = request.args.get('search_line', type=int)
-        search_results = []
+        search_bins = []
+        search_excedentes = []
         if search_line_id and order.status in ('open', 'confirmed'):
             line = next((l for l in order.lines if l.id == search_line_id), None)
             if line:
-                allocated_bin_ids = {a.bin_id for a in Allocation.query.all()}
+                allocated_bin_ids = {
+                    a.bin_id for a in
+                    Allocation.query.filter(Allocation.bin_id.isnot(None)).all()
+                }
                 q = Bin.query.filter_by(status='available')
-                if line.caliber:
-                    q = q.filter(Bin.caliber == line.caliber)
+                caliber_f = request.args.get('caliber_f') or line.caliber
+                if caliber_f:
+                    q = q.filter(Bin.caliber == caliber_f)
                 if line.drying:
                     q = q.filter(Bin.drying == line.drying)
                 if line.temporada:
@@ -500,11 +504,27 @@ def create_app():
                     )
                 if allocated_bin_ids:
                     q = q.filter(Bin.id.notin_(allocated_bin_ids))
-                search_results = q.order_by(Bin.bin_identifier).limit(200).all()
+                search_bins = q.order_by(Bin.bin_identifier).limit(200).all()
+
+                allocated_surplus_ids = {
+                    a.surplus_id for a in
+                    Allocation.query.filter(Allocation.surplus_id.isnot(None)).all()
+                }
+                eq = Excedente.query.filter_by(status='available')
+                if caliber_f:
+                    eq = eq.filter(Excedente.caliber == caliber_f)
+                if line.drying:
+                    eq = eq.filter(Excedente.drying == line.drying)
+                if line.temporada:
+                    eq = eq.filter(Excedente.temporada == line.temporada)
+                if allocated_surplus_ids:
+                    eq = eq.filter(Excedente.id.notin_(allocated_surplus_ids))
+                search_excedentes = eq.order_by(Excedente.created_at.desc()).all()
 
         return render_template('orders/detail.html',
             order=order,
-            search_results=search_results,
+            search_bins=search_bins,
+            search_excedentes=search_excedentes,
             search_line_id=search_line_id,
             CALIBER_OPTIONS=CALIBER_OPTIONS,
             DRYING_LABELS=DRYING_LABELS,
@@ -545,7 +565,7 @@ def create_app():
 
     @app.route('/orders/<int:order_id>/lines/<int:line_id>/allocate', methods=['POST'])
     def allocate_bins(order_id, line_id):
-        from models import Order, OrderLine, Allocation, Bin
+        from models import Order, OrderLine, Allocation, Bin, Excedente
 
         order = Order.query.get_or_404(order_id)
         line  = OrderLine.query.get_or_404(line_id)
@@ -554,9 +574,11 @@ def create_app():
             flash('No se pueden asignar bins a una orden cerrada.', 'err')
             return redirect(url_for('order_detail', order_id=order_id))
 
-        bin_ids = request.form.getlist('bin_ids')
-        if not bin_ids:
-            flash('Seleccioná al menos un bin.', 'err')
+        bin_ids     = request.form.getlist('bin_ids')
+        surplus_ids = request.form.getlist('surplus_ids')
+
+        if not bin_ids and not surplus_ids:
+            flash('Seleccioná al menos un bin o excedente.', 'err')
             return redirect(url_for('order_detail', order_id=order_id,
                                     search_line=line_id))
 
@@ -571,23 +593,99 @@ def create_app():
                 count += 1
             except IntegrityError:
                 db.session.rollback()
+
+        for sid in surplus_ids:
+            s = Excedente.query.get(int(sid))
+            if not s or s.status != 'available':
+                continue
+            db.session.add(Allocation(order_id=order_id, line_id=line_id, surplus_id=s.id))
+            s.status = 'allocated'
+            count += 1
+
         db.session.commit()
-        flash(f'{count} bin(s) asignado(s).', 'ok')
+        flash(f'{count} elemento(s) asignado(s).', 'ok')
         return redirect(url_for('order_detail', order_id=order_id))
 
     @app.route('/allocations/<int:alloc_id>/release', methods=['POST'])
     def release_bin(alloc_id):
-        from models import Allocation, Bin
+        from models import Allocation, Bin, Excedente
 
         alloc = Allocation.query.get_or_404(alloc_id)
         order_id = alloc.order_id
-        b = Bin.query.get(alloc.bin_id)
+        if alloc.bin_id:
+            b = Bin.query.get(alloc.bin_id)
+            if b:
+                b.status = 'available'
+        elif alloc.surplus_id:
+            s = Excedente.query.get(alloc.surplus_id)
+            if s:
+                s.status = 'available'
         db.session.delete(alloc)
-        if b:
-            b.status = 'available'
         db.session.commit()
-        flash('Bin liberado.', 'ok')
+        flash('Liberado.', 'ok')
         return redirect(url_for('order_detail', order_id=order_id))
+
+    @app.route('/orders/<int:order_id>/dispatch', methods=['GET', 'POST'])
+    def dispatch_order(order_id):
+        from models import Order, Bin, Allocation, Excedente, DRYING_LABELS
+
+        order = Order.query.get_or_404(order_id)
+        if order.status != 'confirmed':
+            flash('Solo se pueden despachar órdenes confirmadas.', 'err')
+            return redirect(url_for('order_detail', order_id=order_id))
+
+        if request.method == 'POST':
+            created = 0
+            for line in order.lines:
+                exc_kg_str = request.form.get(f'exc_kg_{line.id}', '').strip()
+                exc_boxes_str = request.form.get(f'exc_boxes_{line.id}', '').strip()
+                try:
+                    exc_kg = float(exc_kg_str) if exc_kg_str else 0.0
+                except ValueError:
+                    exc_kg = 0.0
+                try:
+                    exc_boxes = int(exc_boxes_str) if exc_boxes_str else None
+                except ValueError:
+                    exc_boxes = None
+
+                if exc_kg > 0:
+                    s = Excedente(
+                        source_order_id=order_id,
+                        source_line_id=line.id,
+                        caliber=line.caliber,
+                        drying=line.drying,
+                        temporada=line.temporada,
+                        producto=line.spec_label,
+                        weight_kg=exc_kg,
+                        boxes=exc_boxes,
+                        status='available',
+                    )
+                    db.session.add(s)
+                    created += 1
+
+            # Mark allocated bins/surplus as shipped
+            allocs = Allocation.query.filter_by(order_id=order_id).all()
+            for a in allocs:
+                if a.bin_id:
+                    b = Bin.query.get(a.bin_id)
+                    if b:
+                        b.status = 'shipped'
+                elif a.surplus_id:
+                    s = Excedente.query.get(a.surplus_id)
+                    if s:
+                        s.status = 'shipped'
+
+            order.status = 'fulfilled'
+            db.session.commit()
+
+            msg = 'Orden cumplida — items despachados.'
+            if created:
+                msg += f' {created} excedente(s) registrado(s) como disponibles.'
+            flash(msg, 'ok')
+            return redirect(url_for('order_detail', order_id=order_id))
+
+        return render_template('orders/dispatch.html',
+            order=order, DRYING_LABELS=DRYING_LABELS)
 
     @app.route('/orders/<int:order_id>/status', methods=['POST'])
     def update_order_status(order_id):
@@ -609,18 +707,30 @@ def create_app():
         if new_status == 'cancelled':
             allocs = Allocation.query.filter_by(order_id=order_id).all()
             for a in allocs:
-                b = Bin.query.get(a.bin_id)
-                if b:
-                    b.status = 'available'
+                if a.bin_id:
+                    b = Bin.query.get(a.bin_id)
+                    if b:
+                        b.status = 'available'
+                elif a.surplus_id:
+                    from models import Excedente
+                    s = Excedente.query.get(a.surplus_id)
+                    if s:
+                        s.status = 'available'
                 db.session.delete(a)
-            flash('Orden cancelada — bins liberados.', 'ok')
+            flash('Orden cancelada — items liberados.', 'ok')
         elif new_status == 'fulfilled':
             allocs = Allocation.query.filter_by(order_id=order_id).all()
             for a in allocs:
-                b = Bin.query.get(a.bin_id)
-                if b:
-                    b.status = 'shipped'
-            flash('Orden cumplida — bins marcados como despachados.', 'ok')
+                if a.bin_id:
+                    b = Bin.query.get(a.bin_id)
+                    if b:
+                        b.status = 'shipped'
+                elif a.surplus_id:
+                    from models import Excedente
+                    s = Excedente.query.get(a.surplus_id)
+                    if s:
+                        s.status = 'shipped'
+            flash('Orden cumplida — items marcados como despachados.', 'ok')
         else:
             from models import ORDER_STATUS_LABELS
             flash(f'Estado actualizado a "{ORDER_STATUS_LABELS.get(new_status, new_status)}".', 'ok')
@@ -655,6 +765,9 @@ def _migrate(db_obj):
         # status rename (draft→open, shipped/closed→fulfilled)
         "UPDATE orders SET status = 'open'      WHERE status = 'draft'",
         "UPDATE orders SET status = 'fulfilled' WHERE status IN ('shipped','closed')",
+        # excedentes support
+        'ALTER TABLE allocations ALTER COLUMN bin_id DROP NOT NULL',
+        'ALTER TABLE allocations ADD COLUMN IF NOT EXISTS surplus_id INTEGER REFERENCES excedentes(id)',
     ]
     with db_obj.engine.connect() as conn:
         for sql in stmts:

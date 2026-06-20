@@ -62,7 +62,8 @@ class Bin(db.Model):
     status        = db.Column(db.String(20),  default='available')
     created_at    = db.Column(db.DateTime, default=datetime.utcnow)
 
-    allocation = db.relationship('Allocation', backref='bin', uselist=False)
+    allocation = db.relationship('Allocation', backref='bin', uselist=False,
+                                  foreign_keys='Allocation.bin_id')
 
     @property
     def is_available(self):
@@ -129,7 +130,13 @@ class OrderLine(db.Model):
 
     @property
     def allocated_kg(self):
-        return sum(a.bin.weight_kg or 0 for a in self.allocations if a.bin)
+        total = 0
+        for a in self.allocations:
+            if a.bin:
+                total += a.bin.weight_kg or 0
+            elif a.surplus:
+                total += a.surplus.weight_kg or 0
+        return total
 
     @property
     def pct(self):
@@ -151,13 +158,41 @@ class OrderLine(db.Model):
         return ' · '.join(parts) if parts else 'Cualquier calibre/secado'
 
 
+class Excedente(db.Model):
+    __tablename__ = 'excedentes'
+
+    id              = db.Column(db.Integer, primary_key=True)
+    source_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=True)
+    source_line_id  = db.Column(db.Integer, db.ForeignKey('order_lines.id'), nullable=True)
+    caliber         = db.Column(db.String(20),  nullable=True)
+    drying          = db.Column(db.String(30),  nullable=True)
+    temporada       = db.Column(db.String(10),  nullable=True)
+    producto        = db.Column(db.String(200), nullable=True)
+    weight_kg       = db.Column(db.Float, nullable=False)
+    boxes           = db.Column(db.Integer, nullable=True)
+    status          = db.Column(db.String(20),  default='available')
+    created_at      = db.Column(db.DateTime, default=datetime.utcnow)
+
+    allocation = db.relationship('Allocation', backref='surplus', uselist=False,
+                                  foreign_keys='Allocation.surplus_id')
+
+    @property
+    def drying_label(self):
+        return DRYING_LABELS.get(self.drying, self.drying or '—')
+
+    @property
+    def status_label(self):
+        return BIN_STATUS_LABELS.get(self.status, self.status)
+
+
 class Allocation(db.Model):
     __tablename__ = 'allocations'
 
     id         = db.Column(db.Integer, primary_key=True)
     order_id   = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=False)
     line_id    = db.Column(db.Integer, db.ForeignKey('order_lines.id'), nullable=False)
-    bin_id     = db.Column(db.Integer, db.ForeignKey('bins.id'),   nullable=False)
+    bin_id     = db.Column(db.Integer, db.ForeignKey('bins.id'),   nullable=True)
+    surplus_id = db.Column(db.Integer, db.ForeignKey('excedentes.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (db.UniqueConstraint('bin_id', name='uq_alloc_bin_id'),)
