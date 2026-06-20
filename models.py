@@ -10,9 +10,23 @@ CALIBER_OPTIONS = [
 ]
 
 DRYING_LABELS = {
-    'cancha':         'Cancha / Sol (field)',
-    'horno':          'Horno (kiln)',
-    'termino_secado': 'Término secado (finishing)',
+    'cancha':         'Cancha / Sol',
+    'horno':          'Horno',
+    'termino_secado': 'Término secado',
+}
+
+BIN_STATUS_LABELS = {
+    'available': 'Disponible',
+    'allocated': 'Asignado',
+    'shipped':   'Despachado',
+    'gone':      'Retirado',
+}
+
+ORDER_STATUS_LABELS = {
+    'open':      'Abierta',
+    'confirmed': 'Confirmada',
+    'fulfilled': 'Cumplida',
+    'cancelled': 'Cancelada',
 }
 
 
@@ -62,6 +76,10 @@ class Bin(db.Model):
     def drying_label(self):
         return DRYING_LABELS.get(self.drying, self.drying or '—')
 
+    @property
+    def status_label(self):
+        return BIN_STATUS_LABELS.get(self.status, self.status)
+
 
 class Order(db.Model):
     __tablename__ = 'orders'
@@ -85,6 +103,10 @@ class Order(db.Model):
     @property
     def target_kg(self):
         return sum(line.target_kg for line in self.lines)
+
+    @property
+    def status_label(self):
+        return ORDER_STATUS_LABELS.get(self.status, self.status)
 
 
 class OrderLine(db.Model):

@@ -23,7 +23,7 @@
       <td>{{ o.lines | list | length }}</td>
       <td class="num">{{ "{:,.1f}".format(o.target_kg) }}</td>
       <td class="num">{{ "{:,.1f}".format(o.allocated_kg) }}</td>
-      <td><span class="badge badge-{{ o.status }}">{{ o.status }}</span></td>
+      <td><span class="badge badge-{{ o.status }}">{{ o.status_label }}</span></td>
       <td><a class="open-btn" href="{{ url_for('order_detail', order_id=o.id) }}">ABRIR</a></td>
     </tr>
   {% endfor %}

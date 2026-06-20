@@ -27,10 +27,10 @@
     <label>Estado</label>
     <select name="status">
       <option value="">Todos</option>
-      <option value="available" {{ 'selected' if q_status == 'available' }}>available</option>
-      <option value="allocated" {{ 'selected' if q_status == 'allocated' }}>allocated</option>
-      <option value="shipped"   {{ 'selected' if q_status == 'shipped' }}>shipped</option>
-      <option value="gone"      {{ 'selected' if q_status == 'gone' }}>gone</option>
+      <option value="available" {{ 'selected' if q_status == 'available' }}>Disponible</option>
+      <option value="allocated" {{ 'selected' if q_status == 'allocated' }}>Asignado</option>
+      <option value="shipped"   {{ 'selected' if q_status == 'shipped' }}>Despachado</option>
+      <option value="gone"      {{ 'selected' if q_status == 'gone' }}>Retirado</option>
     </select>
   </div>
   <div class="fld">
@@ -93,7 +93,7 @@
       <td class="num">{{ b.humedad if b.humedad is not none else '—' }}</td>
       <td>{{ b.producer_name or '—' }}</td>
       <td>{{ b.temporada or '—' }}</td>
-      <td><span class="badge badge-{{ b.status }}">{{ b.status }}</span></td>
+      <td><span class="badge badge-{{ b.status }}">{{ b.status_label }}</span></td>
     </tr>
   {% endfor %}
   </tbody>

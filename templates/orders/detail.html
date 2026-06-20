@@ -48,7 +48,7 @@
     </p>
   </div>
   <div class="status-actions">
-    <span class="badge badge-{{ order.status }} big">{{ order.status }}</span>
+    <span class="badge badge-{{ order.status }} big">{{ order.status_label }}</span>
     {% if order.status in ('open', 'confirmed', 'fulfilled', 'cancelled') %}
     <form method="post" action="{{ url_for('update_order_status', order_id=order.id) }}" class="inline">
       {% if order.status == 'open' %}

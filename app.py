@@ -66,9 +66,11 @@ def create_app():
             .all()
         )
 
+        from models import DRYING_LABELS
         return render_template('index.html',
             total=total, avail=avail, kg=round(kg, 1),
             n_open=n_open, alloc_n=alloc_n, summary_rows=rows,
+            DRYING_LABELS=DRYING_LABELS,
         )
 
     # ── Sync ──────────────────────────────────────────────────────────────────
@@ -620,7 +622,8 @@ def create_app():
                     b.status = 'shipped'
             flash('Orden cumplida — bins marcados como despachados.', 'ok')
         else:
-            flash(f'Estado actualizado a "{new_status}".', 'ok')
+            from models import ORDER_STATUS_LABELS
+            flash(f'Estado actualizado a "{ORDER_STATUS_LABELS.get(new_status, new_status)}".', 'ok')
 
         order.status = new_status
         db.session.commit()

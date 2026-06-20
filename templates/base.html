@@ -22,15 +22,10 @@
     <a href="{{ url_for('list_orders') }}"
        class="{{ 'on' if request.endpoint and 'order' in request.endpoint else '' }}">Órdenes de Venta</a>
   </nav>
-  <form action="{{ url_for('sync') }}" method="post" class="sync-form">
-    <button class="btn btn-ghost" title="Importar el último export en data_dump/">↻ Sync (archivo)</button>
-    <button class="btn btn-sync" name="live" value="1"
-            title="Conectar al sistema y traer datos frescos">⚡ Sync en vivo</button>
-  </form>
   <form action="{{ url_for('sync_upload') }}" method="post"
         enctype="multipart/form-data" class="sync-form">
-    <label class="btn btn-ghost" title="Subir bins.json desde tu computadora">
-      📤 Subir JSON
+    <label class="btn btn-sync" title="Subir bins.json desde tu computadora">
+      📤 Actualizar inventario
       <input type="file" name="bins_file" accept=".json" style="display:none"
              onchange="this.form.submit()">
     </label>
