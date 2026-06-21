@@ -23,10 +23,11 @@
        class="{{ 'on' if request.endpoint and 'order' in request.endpoint else '' }}">Órdenes de Venta</a>
   </nav>
   <div class="topbar-actions">
-    <a class="btn btn-pw" href="http://localhost:8899" target="_blank" id="sync-pw-btn"
-       title="Importar desde pWarehouse8 (requiere estar en la red local)">
+    <button class="btn btn-pw" id="sync-pw-btn"
+            onclick="gvSyncPopup()"
+            title="Importar todos los bins desde pWarehouse8">
       Sync pWarehouse
-    </a>
+    </button>
     <form action="{{ url_for('sync_upload') }}" method="post"
           enctype="multipart/form-data" class="sync-form">
       <label class="btn btn-sync" title="Subir bins.json manualmente">
@@ -38,11 +39,20 @@
   </div>
 </header>
 <script>
-  // Grey out the pWarehouse button if the local server is not running
-  fetch('http://localhost:8899/ping', {mode:'no-cors'}).catch(() => {
-    const b = document.getElementById('sync-pw-btn');
-    if (b) { b.style.opacity = '0.4'; b.title = 'Servidor local no activo — abrí sync_server.py en tu Mac'; }
-  });
+function gvSyncPopup() {
+  const w = 580, h = 420;
+  const left = Math.round(screen.width  / 2 - w / 2);
+  const top  = Math.round(screen.height / 2 - h / 2);
+  window.open(
+    'http://localhost:8899/sync-popup',
+    'gv_sync',
+    `width=${w},height=${h},left=${left},top=${top},toolbar=no,location=no,menubar=no,status=no`
+  );
+}
+// When the popup finishes, it sends this message — reload to show fresh counts
+window.addEventListener('message', function(e) {
+  if (e.data === 'gv_sync_done') location.reload();
+});
 </script>
 
 {% with messages = get_flashed_messages(with_categories=true) %}
