@@ -170,7 +170,7 @@ def create_app():
 
     @app.route('/sync/live')
     def sync_live():
-        import subprocess, sys, json as _json
+        import subprocess, sys, json as _json, threading, queue as _queue
         from pathlib import Path as _Path
         from flask import Response, stream_with_context
         from models import Bin
@@ -189,18 +189,35 @@ def create_app():
             return None
 
         def generate():
-            env = {**os.environ, 'GV_NO_UPLOAD': '1', 'GV_OUTPUT': str(output_file)}
-            proc = subprocess.Popen(
-                [sys.executable, str(scraper)],
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, bufsize=1, env=env,
-            )
-            for line in proc.stdout:
-                yield f'data: {line.rstrip()}\n\n'
-            proc.wait()
+            q = _queue.Queue()
 
-            if proc.returncode != 0:
-                yield f'data: __DONE__{proc.returncode}\n\n'
+            def _run():
+                env = {**os.environ, 'GV_NO_UPLOAD': '1', 'GV_OUTPUT': str(output_file)}
+                proc = subprocess.Popen(
+                    [sys.executable, str(scraper)],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, bufsize=1, env=env,
+                )
+                for line in proc.stdout:
+                    q.put(('line', line.rstrip()))
+                proc.wait()
+                q.put(('done', proc.returncode))
+
+            threading.Thread(target=_run, daemon=True).start()
+
+            returncode = None
+            while returncode is None:
+                try:
+                    kind, val = q.get(timeout=15)
+                    if kind == 'line':
+                        yield f'data: {val}\n\n'
+                    else:
+                        returncode = val
+                except _queue.Empty:
+                    yield ': keepalive\n\n'
+
+            if returncode != 0:
+                yield f'data: __DONE__{returncode}\n\n'
                 return
 
             if not output_file.exists():
