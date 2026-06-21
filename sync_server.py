@@ -9,12 +9,12 @@ Routes:
   /sync        — SSE stream of scraper output
   /            — standalone page (fallback)
 """
-import subprocess
+import subprocess, sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
 SCRAPER = Path(__file__).parent / 'scrape_pwarehouse.py'
-PYTHON  = '/Users/pedroholscheribanez/Desktop/BZAN2021Code/.venv/bin/python3'
+PYTHON  = sys.executable   # use whatever python is running this server
 GV_URL  = 'https://web-production-2eea96.up.railway.app'
 PORT    = 8899
 

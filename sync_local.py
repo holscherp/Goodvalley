@@ -98,15 +98,15 @@ def login(url, rut, password):
         raise RuntimeError("No se encontró _S_ID en la página de pWarehouse8.")
     print(f"  Session ID: {sid}")
 
-    # _fp_ must be EMPTY — credentials go as separate O16/O17 fields
+    # UniGUI encodes form values inside _fp_ as:
+    # fieldname + \x02\x02 + value, fields separated by \x01
+    _fp_ = 'O16\x02\x02' + rut + '\x01O17\x02\x02' + password
     lr = sess.post(url + '/HandleEvent', data={
         'Ajax': '1', 'IsEvent': '1', 'Obj': 'O23', 'Evt': 'click',
-        'this': 'O23', '_S_ID': sid, '_fp_': '',
-        'O16': ' \x02\x02' + rut,
-        'O17': ' \x02\x02' + password,
+        'this': 'O23', '_S_ID': sid, '_fp_': _fp_,
         '_seq_': 'a', '_uo_': 'O0',
     }, timeout=30)
-    lr.raise_for_status()
+    print(f"  Login response: HTTP {lr.status_code}  body: {lr.text[:120]!r}")
 
     try:
         result = _parse_js(lr.text)
@@ -115,7 +115,7 @@ def login(url, rut, password):
     except (json.JSONDecodeError, ValueError):
         pass  # non-JSON response after login is OK
 
-    print("  Login OK.")
+    print("  Login OK (continuando con descarga).")
     return sess, sid
 
 

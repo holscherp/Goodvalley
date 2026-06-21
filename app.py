@@ -20,6 +20,92 @@ DRYING_MAP = {
 }
 
 
+_SYNC_POPUP = """<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Sync pWarehouse</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0 }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f0f1a; color: #e0d4f7;
+    display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  }
+  #header {
+    background: #3b0764; padding: 12px 16px;
+    font-size: 14px; font-weight: 600; flex-shrink: 0;
+    display: flex; align-items: center; gap: 10px;
+  }
+  #spinner {
+    width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3);
+    border-top-color: #fff; border-radius: 50%;
+    animation: spin .7s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg) } }
+  #log {
+    flex: 1; overflow-y: auto; padding: 12px 16px;
+    font-family: 'SF Mono', monospace; font-size: 12px;
+    line-height: 1.65; white-space: pre-wrap; color: #d4f0c0;
+  }
+  #footer {
+    padding: 10px 16px; background: #1a1a2e; flex-shrink: 0;
+    font-size: 13px; font-weight: 600; min-height: 38px;
+  }
+  .ok  { color: #6fcf97 }
+  .err { color: #eb5757 }
+</style>
+</head>
+<body>
+<div id="header">
+  <div id="spinner"></div>
+  <span id="title">Sincronizando pWarehouse…</span>
+</div>
+<div id="log"></div>
+<div id="footer"></div>
+<script>
+(function() {
+  const log    = document.getElementById('log');
+  const footer = document.getElementById('footer');
+  const title  = document.getElementById('title');
+  const spinner = document.getElementById('spinner');
+
+  const es = new EventSource('/sync/live');
+
+  es.onmessage = function(e) {
+    if (e.data.startsWith('__DONE__')) {
+      es.close();
+      spinner.style.display = 'none';
+      const ok = parseInt(e.data.replace('__DONE__', '')) === 0;
+      if (ok) {
+        title.textContent = '✓ Sincronización completada';
+        footer.innerHTML = '<span class="ok">✓ Listo — cerrando en 2 segundos…</span>';
+        setTimeout(function() {
+          try { if (window.opener) window.opener.postMessage('gv_sync_done', '*'); } catch(_) {}
+          window.close();
+        }, 2000);
+      } else {
+        title.textContent = 'Error al sincronizar';
+        footer.innerHTML = '<span class="err">✗ Error — revisá el log arriba.</span>';
+      }
+    } else {
+      log.textContent += e.data + '\\n';
+      log.scrollTop = log.scrollHeight;
+    }
+  };
+
+  es.onerror = function() {
+    es.close();
+    spinner.style.display = 'none';
+    title.textContent = 'Error de conexión';
+    footer.innerHTML = '<span class="err">✗ No se pudo conectar al servidor.</span>';
+  };
+})();
+</script>
+</body>
+</html>"""
+
+
 def create_app():
     app = Flask(__name__)
 
@@ -74,6 +160,129 @@ def create_app():
         )
 
     # ── Sync ──────────────────────────────────────────────────────────────────
+
+    @app.route('/sync-popup')
+    def sync_popup():
+        from flask import make_response
+        resp = make_response(_SYNC_POPUP)
+        resp.headers['Content-Type'] = 'text/html; charset=utf-8'
+        return resp
+
+    @app.route('/sync/live')
+    def sync_live():
+        import subprocess, sys, json as _json
+        from pathlib import Path as _Path
+        from flask import Response, stream_with_context
+        from models import Bin
+
+        scraper     = _Path(__file__).parent / 'scrape_pwarehouse.py'
+        output_file = _Path('/tmp/gv_bins_scraped.json')
+
+        def _temporada(t):
+            if len(t) >= 8:
+                try:
+                    p = int(t[:2])
+                    if 18 <= p <= 35:
+                        return str(2000 + p)
+                except ValueError:
+                    pass
+            return None
+
+        def generate():
+            env = {**os.environ, 'GV_NO_UPLOAD': '1', 'GV_OUTPUT': str(output_file)}
+            proc = subprocess.Popen(
+                [sys.executable, str(scraper)],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1, env=env,
+            )
+            for line in proc.stdout:
+                yield f'data: {line.rstrip()}\n\n'
+            proc.wait()
+
+            if proc.returncode != 0:
+                yield f'data: __DONE__{proc.returncode}\n\n'
+                return
+
+            if not output_file.exists():
+                yield 'data: ✗ No se encontró el archivo de bins.\n\n'
+                yield 'data: __DONE__1\n\n'
+                return
+
+            yield 'data: ▶ Importando bins a la base de datos...\n\n'
+            try:
+                bins_data = _json.loads(output_file.read_text())
+
+                existing_map = {
+                    row[0]: row[1] for row in
+                    db.session.query(Bin.bin_identifier, Bin.id)
+                    .filter(Bin.status == 'available').all()
+                }
+                all_ids = {row[0] for row in db.session.query(Bin.bin_identifier).all()}
+
+                added = updated = skipped = 0
+                new_batch = []
+
+                for b in bins_data:
+                    bid = str(b.get('bin_identifier', '')).strip()
+                    if not bid:
+                        skipped += 1; continue
+                    drying = b.get('drying') or ''
+                    if drying not in ('cancha', 'horno', 'termino_secado'):
+                        skipped += 1; continue
+
+                    weight = float(b.get('weight_kg') or 0)
+
+                    if bid in existing_map:
+                        db.session.query(Bin).filter_by(id=existing_map[bid]).update({
+                            'weight_kg': weight,
+                            'humedad': b.get('humedad'),
+                            'caliber': b.get('caliber') or '',
+                            'drying': drying,
+                            'producto': b.get('producto') or '',
+                            'contenedor': b.get('contenedor') or '',
+                            'producer_name': b.get('producer_name') or '',
+                            'temporada': b.get('temporada') or _temporada(bid),
+                        }, synchronize_session=False)
+                        updated += 1
+                    elif bid not in all_ids:
+                        new_batch.append(Bin(
+                            bin_identifier=bid,
+                            producto=b.get('producto') or '',
+                            caliber=b.get('caliber') or '',
+                            drying=drying,
+                            weight_kg=weight,
+                            humedad=b.get('humedad'),
+                            contenedor=b.get('contenedor') or '',
+                            producer_name=b.get('producer_name') or '',
+                            temporada=b.get('temporada') or _temporada(bid),
+                            status='available',
+                        ))
+                        all_ids.add(bid)
+                        added += 1
+                        if len(new_batch) >= 500:
+                            db.session.bulk_save_objects(new_batch)
+                            db.session.commit()
+                            new_batch = []
+                    else:
+                        skipped += 1
+
+                if new_batch:
+                    db.session.bulk_save_objects(new_batch)
+                db.session.commit()
+
+                yield f'data: ✓ {added} nuevos, {updated} actualizados, {skipped} omitidos.\n\n'
+                yield 'data: __DONE__0\n\n'
+
+            except Exception as e:
+                db.session.rollback()
+                yield f'data: ✗ Error importando: {e}\n\n'
+                yield 'data: __DONE__1\n\n'
+
+        return Response(
+            stream_with_context(generate()),
+            content_type='text/event-stream',
+            headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
+        )
 
     @app.route('/sync', methods=['POST'])
     def sync():

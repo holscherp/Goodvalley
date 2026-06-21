@@ -11,11 +11,11 @@ import asyncio, json, os, sys
 from pathlib import Path
 from playwright.async_api import async_playwright, TimeoutError as PWTimeout
 
-PWAREHOUSE_URL  = 'http://190.211.168.247:8077'
-RUT             = '20664661-6'
-PASSWORD        = 'estante991'
-GOODVALLEY_URL  = 'https://web-production-2eea96.up.railway.app'
-OUTPUT_FILE     = Path.home() / 'Desktop' / 'bins_scraped.json'
+PWAREHOUSE_URL  = os.environ.get('PWAREHOUSE_URL', 'http://190.211.168.247:8077')
+RUT             = os.environ.get('PWAREHOUSE_RUT',  '20664661-6')
+PASSWORD        = os.environ.get('PWAREHOUSE_PASS', 'estante991')
+GOODVALLEY_URL  = os.environ.get('GOODVALLEY_URL',  'https://web-production-2eea96.up.railway.app')
+OUTPUT_FILE     = Path(os.environ.get('GV_OUTPUT', str(Path.home() / 'Desktop' / 'bins_scraped.json')))
 SCREENSHOT_DIR  = Path('/tmp/gv_scraper')
 
 # Same extraction logic as the Chrome extension — returns the bins array
@@ -237,7 +237,10 @@ async def main():
     print(f'[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}] Iniciando scraper...')
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(
+            headless=True,
+            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+        )
         page    = await browser.new_page()
 
         # ── 1. Open pWarehouse8 (retry on transient network errors) ───────────
@@ -350,6 +353,11 @@ async def main():
         print(f'✓ Guardado en {OUTPUT_FILE}')
 
         # ── 7. Upload to Goodvalley (3 retries) ───────────────────────────────
+        if os.environ.get('GV_NO_UPLOAD'):
+            print(f'✓ GV_NO_UPLOAD activo — omitiendo upload (archivo en {OUTPUT_FILE})')
+            print('\n✓ Listo.')
+            return
+
         print(f'▶ Subiendo a Goodvalley ({GOODVALLEY_URL})...')
         import urllib.request
         boundary = 'GVscraper1234'
