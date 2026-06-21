@@ -268,11 +268,17 @@ async def main():
             if not await click_by_text(page, 'Aceptar'):
                 raise RuntimeError('No se encontró el botón Aceptar en el login.')
 
+        # UniGUI can take a few seconds to tear down the login form after networkidle
         await page.wait_for_load_state('networkidle', timeout=20000)
+        await page.wait_for_timeout(3000)
         await page.screenshot(path=str(SCREENSHOT_DIR / '03_after_login.png'))
 
-        # Detect failed login (still on login page)
-        if await page.locator('input[name="O2F"]').count():
+        # Detect failed login: wait up to 8s for the login form to disappear
+        for _ in range(8):
+            if not await page.locator('input[name="O2F"]').count():
+                break
+            await page.wait_for_timeout(1000)
+        else:
             raise RuntimeError('Login falló — credenciales incorrectas o servidor no responde.')
 
         # ── 3. Navigate to Bins en Bodega ──────────────────────────────────────
