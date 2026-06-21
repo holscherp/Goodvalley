@@ -240,10 +240,18 @@ async def main():
         browser = await p.chromium.launch(headless=True)
         page    = await browser.new_page()
 
-        # ── 1. Open pWarehouse8 ────────────────────────────────────────────────
+        # ── 1. Open pWarehouse8 (retry on transient network errors) ───────────
         print('▶ Abriendo pWarehouse8...')
-        await page.goto(PWAREHOUSE_URL, timeout=30000)
-        await page.wait_for_load_state('networkidle')
+        for attempt in range(1, 4):
+            try:
+                await page.goto(PWAREHOUSE_URL, timeout=30000)
+                await page.wait_for_load_state('networkidle')
+                break
+            except Exception as e:
+                if attempt == 3:
+                    raise RuntimeError(f'No se pudo conectar a pWarehouse tras 3 intentos: {e}')
+                print(f'  red inestable (intento {attempt}/3), reintentando en 5s...')
+                await asyncio.sleep(5)
         await page.screenshot(path=str(SCREENSHOT_DIR / '01_login_page.png'))
 
         # ── 2. Log in ──────────────────────────────────────────────────────────
