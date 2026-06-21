@@ -75,7 +75,10 @@ h4 { font-size: 14px; margin: .2em 0 }
 .topbar nav a:hover { background: rgba(255,255,255,.09); color: #fff }
 .topbar nav a.on  { background: var(--purple-l); color: #fff }
 
-.sync-form { margin-left: auto; display: flex; gap: 8px }
+.topbar-actions { margin-left: auto; display: flex; gap: 8px; align-items: center }
+.sync-form { display: flex; gap: 8px }
+.btn-pw { background: #5b1a8a; color: #fff }
+.btn-pw:hover { background: #7b2fbe }
 
 /* ── Buttons ── */
 .btn {

@@ -22,15 +22,28 @@
     <a href="{{ url_for('list_orders') }}"
        class="{{ 'on' if request.endpoint and 'order' in request.endpoint else '' }}">Órdenes de Venta</a>
   </nav>
-  <form action="{{ url_for('sync_upload') }}" method="post"
-        enctype="multipart/form-data" class="sync-form">
-    <label class="btn btn-sync" title="Subir bins.json desde tu computadora">
-      Actualizar inventario
-      <input type="file" name="bins_file" accept=".json" style="display:none"
-             onchange="this.form.submit()">
-    </label>
-  </form>
+  <div class="topbar-actions">
+    <a class="btn btn-pw" href="http://localhost:8899" target="_blank" id="sync-pw-btn"
+       title="Importar desde pWarehouse8 (requiere estar en la red local)">
+      Sync pWarehouse
+    </a>
+    <form action="{{ url_for('sync_upload') }}" method="post"
+          enctype="multipart/form-data" class="sync-form">
+      <label class="btn btn-sync" title="Subir bins.json manualmente">
+        Subir JSON
+        <input type="file" name="bins_file" accept=".json" style="display:none"
+               onchange="this.form.submit()">
+      </label>
+    </form>
+  </div>
 </header>
+<script>
+  // Grey out the pWarehouse button if the local server is not running
+  fetch('http://localhost:8899/ping', {mode:'no-cors'}).catch(() => {
+    const b = document.getElementById('sync-pw-btn');
+    if (b) { b.style.opacity = '0.4'; b.title = 'Servidor local no activo — abrí sync_server.py en tu Mac'; }
+  });
+</script>
 
 {% with messages = get_flashed_messages(with_categories=true) %}
   {% for cat, msg in messages %}
