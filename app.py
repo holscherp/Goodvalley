@@ -65,41 +65,55 @@ _SYNC_POPUP = """<!DOCTYPE html>
 <div id="footer"></div>
 <script>
 (function() {
-  const log    = document.getElementById('log');
-  const footer = document.getElementById('footer');
-  const title  = document.getElementById('title');
+  const log     = document.getElementById('log');
+  const footer  = document.getElementById('footer');
+  const title   = document.getElementById('title');
   const spinner = document.getElementById('spinner');
 
-  const es = new EventSource('/sync/live');
+  let offset = 0;
+  let timer  = null;
 
-  es.onmessage = function(e) {
-    if (e.data.startsWith('__DONE__')) {
-      es.close();
-      spinner.style.display = 'none';
-      const ok = parseInt(e.data.replace('__DONE__', '')) === 0;
-      if (ok) {
-        title.textContent = '✓ Sincronización completada';
-        footer.innerHTML = '<span class="ok">✓ Listo — cerrando en 2 segundos…</span>';
-        setTimeout(function() {
-          try { if (window.opener) window.opener.postMessage('gv_sync_done', '*'); } catch(_) {}
-          window.close();
-        }, 2000);
-      } else {
-        title.textContent = 'Error al sincronizar';
-        footer.innerHTML = '<span class="err">✗ Error — revisá el log arriba.</span>';
-      }
-    } else {
-      log.textContent += e.data + '\\n';
-      log.scrollTop = log.scrollHeight;
-    }
-  };
-
-  es.onerror = function() {
-    es.close();
+  function finish(ok) {
+    clearInterval(timer);
     spinner.style.display = 'none';
-    title.textContent = 'Error de conexión';
-    footer.innerHTML = '<span class="err">✗ No se pudo conectar al servidor.</span>';
-  };
+    if (ok) {
+      title.textContent = '\\u2713 Sincronizaci\\u00f3n completada';
+      footer.innerHTML  = '<span class="ok">\\u2713 Listo \\u2014 cerrando en 2 segundos\\u2026</span>';
+      setTimeout(function() {
+        try { if (window.opener) window.opener.postMessage('gv_sync_done', '*'); } catch(_) {}
+        window.close();
+      }, 2000);
+    } else {
+      title.textContent = 'Error al sincronizar';
+      footer.innerHTML  = '<span class="err">\\u2717 Error \\u2014 revis\\u00e1 el log arriba.</span>';
+    }
+  }
+
+  function poll(jobId) {
+    fetch('/sync/status/' + jobId + '?offset=' + offset)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        (d.lines || []).forEach(function(line) {
+          log.textContent += line + '\\n';
+          log.scrollTop = log.scrollHeight;
+        });
+        offset = d.offset;
+        if (d.done) finish(d.returncode === 0);
+      })
+      .catch(function(e) { console.warn('poll error (retrying):', e); });
+  }
+
+  fetch('/sync/start', { method: 'POST' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.job_id) { finish(false); return; }
+      timer = setInterval(function() { poll(d.job_id); }, 2000);
+    })
+    .catch(function() {
+      spinner.style.display = 'none';
+      title.textContent = 'Error de conexi\\u00f3n';
+      footer.innerHTML  = '<span class="err">\\u2717 No se pudo iniciar la sincronizaci\\u00f3n.</span>';
+    });
 })();
 </script>
 </body>
@@ -168,15 +182,23 @@ def create_app():
         resp.headers['Content-Type'] = 'text/html; charset=utf-8'
         return resp
 
-    @app.route('/sync/live')
-    def sync_live():
-        import subprocess, sys, json as _json, threading, queue as _queue
+    @app.route('/sync/start', methods=['POST'])
+    def sync_start():
+        import subprocess, sys, threading, uuid as _uuid
         from pathlib import Path as _Path
-        from flask import Response, stream_with_context
+        from flask import jsonify, current_app as _ca
         from models import Bin
 
+        job_id      = _uuid.uuid4().hex[:8]
+        log_path    = _Path(f'/tmp/gv_job_{job_id}.log')
+        status_path = _Path(f'/tmp/gv_job_{job_id}.status')
+        bins_path   = _Path(f'/tmp/gv_bins_{job_id}.json')
         scraper     = _Path(__file__).parent / 'scrape_pwarehouse.py'
-        output_file = _Path('/tmp/gv_bins_scraped.json')
+
+        log_path.write_text('')
+        status_path.write_text('running')
+
+        _app = _ca._get_current_object()
 
         def _temporada(t):
             if len(t) >= 8:
@@ -188,118 +210,127 @@ def create_app():
                     pass
             return None
 
-        def generate():
-            q = _queue.Queue()
-
-            def _run():
-                env = {**os.environ, 'GV_NO_UPLOAD': '1', 'GV_OUTPUT': str(output_file)}
-                proc = subprocess.Popen(
-                    [sys.executable, str(scraper)],
-                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                    text=True, bufsize=1, env=env,
-                )
+        def run():
+            env = {**os.environ, 'GV_NO_UPLOAD': '1', 'GV_OUTPUT': str(bins_path)}
+            proc = subprocess.Popen(
+                [sys.executable, str(scraper)],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1, env=env,
+            )
+            with open(log_path, 'a') as lf:
                 for line in proc.stdout:
-                    q.put(('line', line.rstrip()))
-                proc.wait()
-                q.put(('done', proc.returncode))
+                    lf.write(line.rstrip() + '\n')
+                    lf.flush()
+            proc.wait()
 
-            threading.Thread(target=_run, daemon=True).start()
-
-            returncode = None
-            while returncode is None:
-                try:
-                    kind, val = q.get(timeout=15)
-                    if kind == 'line':
-                        yield f'data: {val}\n\n'
-                    else:
-                        returncode = val
-                except _queue.Empty:
-                    yield ': keepalive\n\n'
-
-            if returncode != 0:
-                yield f'data: __DONE__{returncode}\n\n'
+            if proc.returncode != 0 or not bins_path.exists():
+                status_path.write_text(f'done:{proc.returncode or 1}')
                 return
 
-            if not output_file.exists():
-                yield 'data: ✗ No se encontró el archivo de bins.\n\n'
-                yield 'data: __DONE__1\n\n'
-                return
-
-            yield 'data: ▶ Importando bins a la base de datos...\n\n'
+            import json as _json
             try:
-                bins_data = _json.loads(output_file.read_text())
+                bins_data = _json.loads(bins_path.read_text())
+                with open(log_path, 'a') as lf:
+                    lf.write('► Importando bins a la base de datos...\n')
+                    lf.flush()
 
-                existing_map = {
-                    row[0]: row[1] for row in
-                    db.session.query(Bin.bin_identifier, Bin.id)
-                    .filter(Bin.status == 'available').all()
-                }
-                all_ids = {row[0] for row in db.session.query(Bin.bin_identifier).all()}
+                with _app.app_context():
+                    existing_map = {
+                        row[0]: row[1] for row in
+                        db.session.query(Bin.bin_identifier, Bin.id)
+                        .filter(Bin.status == 'available').all()
+                    }
+                    all_ids = {row[0] for row in db.session.query(Bin.bin_identifier).all()}
 
-                added = updated = skipped = 0
-                new_batch = []
+                    added = updated = skipped = 0
+                    new_batch = []
 
-                for b in bins_data:
-                    bid = str(b.get('bin_identifier', '')).strip()
-                    if not bid:
-                        skipped += 1; continue
-                    drying = b.get('drying') or ''
-                    if drying not in ('cancha', 'horno', 'termino_secado'):
-                        skipped += 1; continue
+                    for b in bins_data:
+                        bid = str(b.get('bin_identifier', '')).strip()
+                        if not bid:
+                            skipped += 1; continue
+                        drying = b.get('drying') or ''
+                        if drying not in ('cancha', 'horno', 'termino_secado'):
+                            skipped += 1; continue
+                        weight = float(b.get('weight_kg') or 0)
 
-                    weight = float(b.get('weight_kg') or 0)
+                        if bid in existing_map:
+                            db.session.query(Bin).filter_by(id=existing_map[bid]).update({
+                                'weight_kg': weight,
+                                'humedad': b.get('humedad'),
+                                'caliber': b.get('caliber') or '',
+                                'drying': drying,
+                                'producto': b.get('producto') or '',
+                                'contenedor': b.get('contenedor') or '',
+                                'producer_name': b.get('producer_name') or '',
+                                'temporada': b.get('temporada') or _temporada(bid),
+                            }, synchronize_session=False)
+                            updated += 1
+                        elif bid not in all_ids:
+                            new_batch.append(Bin(
+                                bin_identifier=bid,
+                                producto=b.get('producto') or '',
+                                caliber=b.get('caliber') or '',
+                                drying=drying,
+                                weight_kg=weight,
+                                humedad=b.get('humedad'),
+                                contenedor=b.get('contenedor') or '',
+                                producer_name=b.get('producer_name') or '',
+                                temporada=b.get('temporada') or _temporada(bid),
+                                status='available',
+                            ))
+                            all_ids.add(bid)
+                            added += 1
+                            if len(new_batch) >= 500:
+                                db.session.bulk_save_objects(new_batch)
+                                db.session.commit()
+                                new_batch = []
+                        else:
+                            skipped += 1
 
-                    if bid in existing_map:
-                        db.session.query(Bin).filter_by(id=existing_map[bid]).update({
-                            'weight_kg': weight,
-                            'humedad': b.get('humedad'),
-                            'caliber': b.get('caliber') or '',
-                            'drying': drying,
-                            'producto': b.get('producto') or '',
-                            'contenedor': b.get('contenedor') or '',
-                            'producer_name': b.get('producer_name') or '',
-                            'temporada': b.get('temporada') or _temporada(bid),
-                        }, synchronize_session=False)
-                        updated += 1
-                    elif bid not in all_ids:
-                        new_batch.append(Bin(
-                            bin_identifier=bid,
-                            producto=b.get('producto') or '',
-                            caliber=b.get('caliber') or '',
-                            drying=drying,
-                            weight_kg=weight,
-                            humedad=b.get('humedad'),
-                            contenedor=b.get('contenedor') or '',
-                            producer_name=b.get('producer_name') or '',
-                            temporada=b.get('temporada') or _temporada(bid),
-                            status='available',
-                        ))
-                        all_ids.add(bid)
-                        added += 1
-                        if len(new_batch) >= 500:
-                            db.session.bulk_save_objects(new_batch)
-                            db.session.commit()
-                            new_batch = []
-                    else:
-                        skipped += 1
+                    if new_batch:
+                        db.session.bulk_save_objects(new_batch)
+                    db.session.commit()
 
-                if new_batch:
-                    db.session.bulk_save_objects(new_batch)
-                db.session.commit()
-
-                yield f'data: ✓ {added} nuevos, {updated} actualizados, {skipped} omitidos.\n\n'
-                yield 'data: __DONE__0\n\n'
+                with open(log_path, 'a') as lf:
+                    lf.write(f'✓ {added} nuevos, {updated} actualizados, {skipped} omitidos.\n')
+                    lf.flush()
+                status_path.write_text('done:0')
 
             except Exception as e:
-                db.session.rollback()
-                yield f'data: ✗ Error importando: {e}\n\n'
-                yield 'data: __DONE__1\n\n'
+                with open(log_path, 'a') as lf:
+                    lf.write(f'✗ Error importando: {e}\n')
+                    lf.flush()
+                status_path.write_text('done:1')
 
-        return Response(
-            stream_with_context(generate()),
-            content_type='text/event-stream',
-            headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
-        )
+        threading.Thread(target=run, daemon=True).start()
+        return jsonify({'job_id': job_id})
+
+    @app.route('/sync/status/<job_id>')
+    def sync_status(job_id):
+        from pathlib import Path as _Path
+        from flask import jsonify
+
+        log_path    = _Path(f'/tmp/gv_job_{job_id}.log')
+        status_path = _Path(f'/tmp/gv_job_{job_id}.status')
+
+        offset = request.args.get('offset', 0, type=int)
+
+        lines = []
+        if log_path.exists():
+            all_lines = [l for l in log_path.read_text().split('\n') if l]
+            lines = all_lines[offset:]
+
+        raw_status  = status_path.read_text().strip() if status_path.exists() else 'running'
+        done        = raw_status.startswith('done:')
+        returncode  = int(raw_status.replace('done:', '')) if done else None
+
+        return jsonify({
+            'lines': lines,
+            'offset': offset + len(lines),
+            'done': done,
+            'returncode': returncode,
+        })
 
     @app.route('/sync', methods=['POST'])
     def sync():

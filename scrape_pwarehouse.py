@@ -309,7 +309,7 @@ async def main():
             if not await click_by_text(page, 'Actualizar'):
                 raise RuntimeError('No se encontró el botón Actualizar.')
 
-        for tick in range(25):   # up to ~75 seconds
+        for tick in range(50):   # up to ~150 seconds
             await page.wait_for_timeout(3000)
             count = await page.evaluate("""() => {
                 let best = 0;
