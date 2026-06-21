@@ -299,48 +299,74 @@ def create_app():
             return redirect(url_for('index'))
 
         try:
-            # One query for all existing identifiers — avoids N+1 timeout
-            existing = {
-                row[0] for row in
-                db.session.query(Bin.bin_identifier).all()
+            # Load existing available bins into a dict keyed by identifier
+            existing_map = {
+                row[0]: row[1] for row in
+                db.session.query(Bin.bin_identifier, Bin.id)
+                .filter(Bin.status == 'available').all()
+            }
+            # Also track all identifiers (including allocated/shipped) to avoid re-adding
+            all_ids = {
+                row[0] for row in db.session.query(Bin.bin_identifier).all()
             }
 
-            added = skipped = 0
-            batch = []
+            added = updated = skipped = 0
+            new_batch = []
+            incoming_ids = set()
+
             for b in bins_data:
                 bid = str(b.get('bin_identifier', '')).strip()
-                if not bid or bid in existing:
+                if not bid:
                     skipped += 1
                     continue
                 drying = b.get('drying') or ''
                 if drying not in ('cancha', 'horno', 'termino_secado'):
                     skipped += 1
                     continue
-                batch.append(Bin(
-                    bin_identifier=bid,
-                    producto=b.get('producto') or '',
-                    caliber=b.get('caliber') or '',
-                    drying=drying,
-                    weight_kg=float(b.get('weight_kg') or 0),
-                    humedad=b.get('humedad'),
-                    contenedor=b.get('contenedor') or '',
-                    producer_name=b.get('producer_name') or '',
-                    temporada=b.get('temporada') or _temporada(bid),
-                    status='available',
-                ))
-                existing.add(bid)
-                added += 1
-                # Commit in chunks to avoid memory buildup
-                if len(batch) >= 500:
-                    db.session.bulk_save_objects(batch)
-                    db.session.commit()
-                    batch = []
 
-            if batch:
-                db.session.bulk_save_objects(batch)
-                db.session.commit()
+                incoming_ids.add(bid)
+                weight = float(b.get('weight_kg') or 0)
 
-            flash(f'Sync (subida) completo: {added} importados, {skipped} ya existían o sin secado.', 'ok')
+                if bid in existing_map:
+                    # Update available bin with fresh data from pWarehouse
+                    db.session.query(Bin).filter_by(id=existing_map[bid]).update({
+                        'weight_kg': weight,
+                        'humedad': b.get('humedad'),
+                        'caliber': b.get('caliber') or '',
+                        'drying': drying,
+                        'producto': b.get('producto') or '',
+                        'contenedor': b.get('contenedor') or '',
+                        'producer_name': b.get('producer_name') or '',
+                        'temporada': b.get('temporada') or _temporada(bid),
+                    }, synchronize_session=False)
+                    updated += 1
+                elif bid not in all_ids:
+                    new_batch.append(Bin(
+                        bin_identifier=bid,
+                        producto=b.get('producto') or '',
+                        caliber=b.get('caliber') or '',
+                        drying=drying,
+                        weight_kg=weight,
+                        humedad=b.get('humedad'),
+                        contenedor=b.get('contenedor') or '',
+                        producer_name=b.get('producer_name') or '',
+                        temporada=b.get('temporada') or _temporada(bid),
+                        status='available',
+                    ))
+                    all_ids.add(bid)
+                    added += 1
+                    if len(new_batch) >= 500:
+                        db.session.bulk_save_objects(new_batch)
+                        db.session.commit()
+                        new_batch = []
+                else:
+                    skipped += 1
+
+            if new_batch:
+                db.session.bulk_save_objects(new_batch)
+            db.session.commit()
+
+            flash(f'Sync completo: {added} nuevos, {updated} actualizados, {skipped} omitidos.', 'ok')
         except Exception as e:
             db.session.rollback()
             flash(f'Error al importar: {e}', 'err')
