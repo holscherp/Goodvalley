@@ -1064,6 +1064,121 @@ def create_app():
         db.session.commit()
         return redirect(url_for('order_detail', order_id=order_id))
 
+    @app.route('/admin/import-pallets', methods=['POST'])
+    def admin_import_pallets():
+        """
+        Create Bin records from finished-pallet data (Pallets en bodega) and
+        allocate each one to the correct order line.
+        Payload: { passcode, pallets: [{tarja, ot, customer, caliber, drying,
+                   product_type, weight_kg, producto, temporada}] }
+        """
+        from models import Order, OrderLine, Bin, Allocation
+        from flask import jsonify
+
+        payload = request.get_json(force=True, silent=True) or {}
+        if payload.get('passcode') != '001083748':
+            return jsonify({'error': 'unauthorized'}), 403
+
+        pallets = payload.get('pallets', [])
+
+        # Pre-load orders: customer (upper) → Order
+        orders_by_customer = {
+            o.customer.strip().upper(): o
+            for o in Order.query.all()
+        }
+
+        # Pre-load existing bin identifiers
+        existing_bins = {
+            row[0] for row in db.session.query(Bin.bin_identifier).all()
+        }
+
+        added = skipped_dup = skipped_no_order = skipped_no_line = allocated = 0
+        errors = []
+
+        for p in pallets:
+            tarja    = str(p.get('tarja') or '').strip()
+            ot       = str(p.get('ot')     or '').strip()
+            customer = str(p.get('customer') or '').strip()
+            caliber  = p.get('caliber') or None
+            drying   = p.get('drying')  or None
+            pt       = p.get('product_type') or None
+            kg       = float(p.get('weight_kg') or 0)
+            produto  = p.get('producto') or ''
+            temp     = p.get('temporada')
+            temporada = str(int(temp)) if temp else None
+
+            if not tarja:
+                continue
+            if tarja in existing_bins:
+                skipped_dup += 1
+                continue
+
+            # Find order
+            order = orders_by_customer.get(customer.upper())
+            if not order:
+                skipped_no_order += 1
+                errors.append(f'No order for customer "{customer}" (tarja {tarja})')
+                continue
+
+            # Find matching line: notes contains OT, or caliber+pt match
+            line = None
+            for ln in order.lines:
+                notes_ot = f'OT {ot}'
+                if ln.notes and notes_ot in ln.notes:
+                    line = ln
+                    break
+            if not line:
+                # Fallback: match by caliber + product_type
+                for ln in order.lines:
+                    if ln.caliber == caliber and ln.product_type == pt:
+                        line = ln
+                        break
+            if not line and order.lines:
+                # Last resort: first line of the order
+                line = order.lines[0]
+            if not line:
+                skipped_no_line += 1
+                continue
+
+            # Create bin
+            b = Bin(
+                bin_identifier=tarja,
+                producto=produto,
+                caliber=caliber,
+                drying=drying,
+                weight_kg=kg,
+                temporada=temporada,
+                status='available',
+            )
+            db.session.add(b)
+            db.session.flush()
+            existing_bins.add(tarja)
+            added += 1
+
+            # Allocate
+            try:
+                db.session.add(Allocation(
+                    order_id=order.id, line_id=line.id, bin_id=b.id))
+                b.status = 'allocated'
+                allocated += 1
+            except Exception as e:
+                errors.append(f'Alloc error {tarja}: {e}')
+
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': str(e)}), 500
+
+        return jsonify({
+            'added': added,
+            'allocated': allocated,
+            'skipped_duplicate': skipped_dup,
+            'skipped_no_order': skipped_no_order,
+            'skipped_no_line': skipped_no_line,
+            'errors': errors[:20],
+        })
+
     @app.route('/admin/import-orders', methods=['POST'])
     def admin_import_orders():
         from models import Order, OrderLine, Bin, Allocation
