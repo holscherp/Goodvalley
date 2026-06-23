@@ -182,6 +182,14 @@ def create_app():
         resp.headers['Content-Type'] = 'text/html; charset=utf-8'
         return resp
 
+    @app.route('/sync-full-popup')
+    def sync_full_popup():
+        from flask import make_response
+        html = _SYNC_POPUP.replace("fetch('/sync/start',", "fetch('/sync/full/start',")
+        resp = make_response(html)
+        resp.headers['Content-Type'] = 'text/html; charset=utf-8'
+        return resp
+
     @app.route('/sync/start', methods=['POST'])
     def sync_start():
         import subprocess, sys, threading, uuid as _uuid
@@ -331,6 +339,209 @@ def create_app():
             'done': done,
             'returncode': returncode,
         })
+
+    @app.route('/sync/full/start', methods=['POST'])
+    def sync_full_start():
+        import subprocess, sys, threading, uuid as _uuid
+        from pathlib import Path as _Path
+        from flask import jsonify, current_app as _ca
+        from models import Bin, Order, Allocation
+
+        job_id        = _uuid.uuid4().hex[:8]
+        log_path      = _Path(f'/tmp/gv_job_{job_id}.log')
+        status_path   = _Path(f'/tmp/gv_job_{job_id}.status')
+        bins_path     = _Path(f'/tmp/gv_bins_{job_id}.json')
+        pallets_path  = _Path(f'/tmp/gv_pallets_{job_id}.json')
+        procesos_path = _Path(f'/tmp/gv_procesos_{job_id}.json')
+        scraper       = _Path(__file__).parent / 'scrape_full.py'
+
+        log_path.write_text('')
+        status_path.write_text('running')
+
+        _app = _ca._get_current_object()
+
+        def _infer_temporada(tarja_str):
+            if len(tarja_str) >= 8:
+                try:
+                    p = int(tarja_str[:2])
+                    if 18 <= p <= 35:
+                        return str(2000 + p)
+                except ValueError:
+                    pass
+            return None
+
+        def run():
+            import json as _json
+
+            env = {
+                **os.environ,
+                'GV_NO_UPLOAD':   '1',
+                'GV_BINS_OUT':    str(bins_path),
+                'GV_PALLETS_OUT': str(pallets_path),
+                'GV_PROCESOS_OUT': str(procesos_path),
+            }
+            proc = subprocess.Popen(
+                [sys.executable, str(scraper)],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1, env=env,
+            )
+            with open(log_path, 'a') as lf:
+                for line in proc.stdout:
+                    lf.write(line.rstrip() + '\n')
+                    lf.flush()
+            proc.wait()
+
+            if proc.returncode != 0:
+                status_path.write_text(f'done:{proc.returncode or 1}')
+                return
+
+            # ── Import bins ───────────────────────────────────────────────────
+            if bins_path.exists():
+                try:
+                    bins_data = _json.loads(bins_path.read_text())
+                    with open(log_path, 'a') as lf:
+                        lf.write('► Importando bins a la base de datos...\n')
+                        lf.flush()
+                    with _app.app_context():
+                        existing_map = {
+                            row[0]: row[1] for row in
+                            db.session.query(Bin.bin_identifier, Bin.id)
+                            .filter(Bin.status == 'available').all()
+                        }
+                        all_ids = {row[0] for row in db.session.query(Bin.bin_identifier).all()}
+                        added = updated = skipped = 0
+                        new_batch = []
+                        for b in bins_data:
+                            bid = str(b.get('bin_identifier', '')).strip()
+                            if not bid: skipped += 1; continue
+                            drying = b.get('drying') or ''
+                            if drying not in ('cancha', 'horno', 'termino_secado'):
+                                skipped += 1; continue
+                            weight = float(b.get('weight_kg') or 0)
+                            if bid in existing_map:
+                                db.session.query(Bin).filter_by(id=existing_map[bid]).update({
+                                    'weight_kg': weight,
+                                    'humedad': b.get('humedad'),
+                                    'caliber': b.get('caliber') or '',
+                                    'drying': drying,
+                                    'producto': b.get('producto') or '',
+                                    'contenedor': b.get('contenedor') or '',
+                                    'producer_name': b.get('producer_name') or '',
+                                    'temporada': b.get('temporada') or _infer_temporada(bid),
+                                }, synchronize_session=False)
+                                updated += 1
+                            elif bid not in all_ids:
+                                new_batch.append(Bin(
+                                    bin_identifier=bid,
+                                    producto=b.get('producto') or '',
+                                    caliber=b.get('caliber') or '',
+                                    drying=drying,
+                                    weight_kg=weight,
+                                    humedad=b.get('humedad'),
+                                    contenedor=b.get('contenedor') or '',
+                                    producer_name=b.get('producer_name') or '',
+                                    temporada=b.get('temporada') or _infer_temporada(bid),
+                                    status='available',
+                                ))
+                                all_ids.add(bid)
+                                added += 1
+                                if len(new_batch) >= 500:
+                                    db.session.bulk_save_objects(new_batch)
+                                    db.session.commit()
+                                    new_batch = []
+                            else:
+                                skipped += 1
+                        if new_batch:
+                            db.session.bulk_save_objects(new_batch)
+                        db.session.commit()
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'✓ Bins: {added} nuevos, {updated} actualizados, {skipped} omitidos.\n')
+                        lf.flush()
+                except Exception as e:
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'✗ Error importando bins: {e}\n')
+                        lf.flush()
+
+            # ── Import pallets ────────────────────────────────────────────────
+            if pallets_path.exists():
+                try:
+                    pallets_data = _json.loads(pallets_path.read_text())
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'► Importando {len(pallets_data)} pallets...\n')
+                        lf.flush()
+                    with _app.app_context():
+                        orders_by_customer = {
+                            o.customer.strip().upper(): o
+                            for o in Order.query.all()
+                        }
+                        existing_bins = {
+                            row[0] for row in db.session.query(Bin.bin_identifier).all()
+                        }
+                        added = skipped_dup = skipped_no_order = allocated = 0
+                        p_errors = []
+                        for p in pallets_data:
+                            tarja    = str(p.get('tarja') or '').strip()
+                            ot       = str(p.get('ot') or '').strip()
+                            customer = str(p.get('customer') or '').strip()
+                            if not tarja: continue
+                            if tarja in existing_bins:
+                                skipped_dup += 1; continue
+                            order = orders_by_customer.get(customer.upper())
+                            if not order:
+                                skipped_no_order += 1; continue
+                            line = None
+                            for ln in order.lines:
+                                if ln.notes and f'OT {ot}' in ln.notes:
+                                    line = ln; break
+                            if not line:
+                                cal = p.get('caliber')
+                                pt  = p.get('product_type')
+                                for ln in order.lines:
+                                    if ln.caliber == cal and ln.product_type == pt:
+                                        line = ln; break
+                            if not line and order.lines:
+                                line = order.lines[0]
+                            if not line: continue
+                            temp_raw  = p.get('temporada')
+                            temporada = str(int(float(temp_raw))) if temp_raw else None
+                            b = Bin(
+                                bin_identifier=tarja,
+                                producto=p.get('producto') or '',
+                                caliber=p.get('caliber'),
+                                drying=p.get('drying') or 'termino_secado',
+                                weight_kg=float(p.get('weight_kg') or 0),
+                                temporada=temporada,
+                                status='available',
+                            )
+                            db.session.add(b)
+                            db.session.flush()
+                            existing_bins.add(tarja)
+                            added += 1
+                            try:
+                                db.session.add(Allocation(
+                                    order_id=order.id, line_id=line.id, bin_id=b.id))
+                                b.status = 'allocated'
+                                allocated += 1
+                            except Exception as ex:
+                                p_errors.append(str(ex))
+                        db.session.commit()
+                    with open(log_path, 'a') as lf:
+                        lf.write(
+                            f'✓ Pallets: {added} añadidos, {allocated} asignados, '
+                            f'{skipped_dup} duplicados, {skipped_no_order} sin orden.\n'
+                        )
+                        if p_errors:
+                            lf.write(f'  Errores: {p_errors[:5]}\n')
+                        lf.flush()
+                except Exception as e:
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'✗ Error importando pallets: {e}\n')
+                        lf.flush()
+
+            status_path.write_text('done:0')
+
+        threading.Thread(target=run, daemon=True).start()
+        return jsonify({'job_id': job_id})
 
     @app.route('/sync', methods=['POST'])
     def sync():

@@ -23,10 +23,15 @@
        class="{{ 'on' if request.endpoint and 'order' in request.endpoint else '' }}">Órdenes de Venta</a>
   </nav>
   <div class="topbar-actions">
+    <button class="btn btn-pw" id="sync-full-btn"
+            onclick="gvSyncFullPopup()"
+            title="Sync completo: Bins + Pallets + Procesos desde pWarehouse8">
+      Sync Completo
+    </button>
     <button class="btn btn-pw" id="sync-pw-btn"
             onclick="gvSyncPopup()"
-            title="Importar todos los bins desde pWarehouse8">
-      Sync pWarehouse
+            title="Importar solo los bins desde pWarehouse8">
+      Sync Bins
     </button>
     <form action="{{ url_for('sync_upload') }}" method="post"
           enctype="multipart/form-data" class="sync-form">
@@ -46,6 +51,16 @@ function gvSyncPopup() {
   window.open(
     '/sync-popup',
     'gv_sync',
+    `width=${w},height=${h},left=${left},top=${top},toolbar=no,location=no,menubar=no,status=no`
+  );
+}
+function gvSyncFullPopup() {
+  const w = 580, h = 420;
+  const left = Math.round(screen.width  / 2 - w / 2);
+  const top  = Math.round(screen.height / 2 - h / 2);
+  window.open(
+    '/sync-full-popup',
+    'gv_sync_full',
     `width=${w},height=${h},left=${left},top=${top},toolbar=no,location=no,menubar=no,status=no`
   );
 }
