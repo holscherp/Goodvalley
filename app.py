@@ -1064,6 +1064,93 @@ def create_app():
         db.session.commit()
         return redirect(url_for('order_detail', order_id=order_id))
 
+    @app.route('/admin/import-orders', methods=['POST'])
+    def admin_import_orders():
+        from models import Order, OrderLine, Bin, Allocation
+        from flask import jsonify
+
+        payload = request.get_json(force=True, silent=True) or {}
+        if payload.get('passcode') != '001083748':
+            return jsonify({'error': 'unauthorized'}), 403
+
+        orders_data = payload.get('orders', [])
+        results = []
+        errors = []
+
+        existing_customers = {o.customer.strip().upper() for o in Order.query.all()}
+
+        for od in orders_data:
+            customer = (od.get('customer') or '').strip()
+            if not customer:
+                continue
+            if customer.upper() in existing_customers:
+                results.append({'customer': customer, 'skipped': True, 'reason': 'already exists'})
+                continue
+
+            order = Order(
+                customer=customer,
+                reference=od.get('reference') or None,
+                notes=od.get('notes') or None,
+                status='open',
+            )
+            db.session.add(order)
+            db.session.flush()
+            existing_customers.add(customer.upper())
+
+            order_result = {'customer': customer, 'order_id': order.id, 'lines': []}
+
+            for ld in od.get('lines', []):
+                line = OrderLine(
+                    order_id=order.id,
+                    caliber=ld.get('caliber') or None,
+                    drying=ld.get('drying') or None,
+                    target_kg=float(ld.get('target_kg') or 0),
+                    temporada=str(int(ld['temporada'])) if ld.get('temporada') else None,
+                    product_type=ld.get('product_type') or None,
+                    notes=ld.get('notes') or None,
+                )
+                db.session.add(line)
+                db.session.flush()
+
+                allocated = []
+                not_found = []
+                for bid in (ld.get('bin_identifiers') or []):
+                    bid = str(bid).strip()
+                    b = Bin.query.filter_by(bin_identifier=bid, status='available').first()
+                    if b:
+                        try:
+                            db.session.add(Allocation(
+                                order_id=order.id, line_id=line.id, bin_id=b.id))
+                            b.status = 'allocated'
+                            allocated.append(bid)
+                        except Exception:
+                            db.session.rollback()
+                            not_found.append(bid)
+                    else:
+                        not_found.append(bid)
+
+                order_result['lines'].append({
+                    'line_id': line.id,
+                    'caliber': line.caliber,
+                    'drying': line.drying,
+                    'product_type': line.product_type,
+                    'target_kg': line.target_kg,
+                    'allocated': len(allocated),
+                    'not_found': len(not_found),
+                })
+
+            try:
+                db.session.commit()
+                results.append(order_result)
+            except Exception as e:
+                db.session.rollback()
+                errors.append({'customer': customer, 'error': str(e)})
+
+        return jsonify({'created': len([r for r in results if 'order_id' in r]),
+                        'skipped': len([r for r in results if r.get('skipped')]),
+                        'errors': errors,
+                        'orders': results})
+
     return app
 
 

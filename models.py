@@ -18,6 +18,7 @@ DRYING_LABELS = {
 PRODUCT_TYPE_LABELS = {
     'tsc':     'TSC — Tiernizado sin carozo',
     'tcc':     'TCC — Tiernizado con carozo',
+    'tss':     'TSS — Tiernizado sin semilla',
     'elliot':  'Elliot',
     'natural': 'Condición Natural',
 }
