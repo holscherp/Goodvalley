@@ -723,13 +723,13 @@ def create_app():
             flash('El nombre del cliente es obligatorio.', 'err')
             return redirect(url_for('list_orders'))
 
-        caliber     = request.form.get('caliber')   or None
-        drying      = request.form.get('drying')    or None
-        target_kg   = request.form.get('target_kg', '0')
-        max_humedad = request.form.get('max_humedad') or None
-        temporada   = request.form.get('temporada')  or None
-        pitted      = bool(request.form.get('pitted'))
-        line_notes  = request.form.get('line_notes', '').strip() or None
+        caliber      = request.form.get('caliber')      or None
+        drying       = request.form.get('drying')       or None
+        target_kg    = request.form.get('target_kg', '0')
+        max_humedad  = request.form.get('max_humedad')  or None
+        temporada    = request.form.get('temporada')    or None
+        product_type = request.form.get('product_type') or None
+        line_notes   = request.form.get('line_notes', '').strip() or None
 
         try:
             tkg = float(target_kg)
@@ -744,7 +744,7 @@ def create_app():
             order_id=order.id, caliber=caliber, drying=drying,
             target_kg=tkg,
             max_humedad=float(max_humedad) if max_humedad else None,
-            temporada=temporada, pitted=pitted, notes=line_notes,
+            temporada=temporada, product_type=product_type, notes=line_notes,
         )
         db.session.add(line)
         db.session.commit()
@@ -822,13 +822,13 @@ def create_app():
             flash('No se pueden agregar líneas a una orden cerrada.', 'err')
             return redirect(url_for('order_detail', order_id=order_id))
 
-        caliber     = request.form.get('caliber')    or None
-        drying      = request.form.get('drying')     or None
-        target_kg   = request.form.get('target_kg',  '0')
-        max_humedad = request.form.get('max_humedad') or None
-        temporada   = request.form.get('temporada')  or None
-        pitted      = bool(request.form.get('pitted'))
-        notes       = request.form.get('notes', '').strip() or None
+        caliber      = request.form.get('caliber')      or None
+        drying       = request.form.get('drying')       or None
+        target_kg    = request.form.get('target_kg',  '0')
+        max_humedad  = request.form.get('max_humedad')  or None
+        temporada    = request.form.get('temporada')    or None
+        product_type = request.form.get('product_type') or None
+        notes        = request.form.get('notes', '').strip() or None
 
         try:
             tkg = float(target_kg)
@@ -839,7 +839,7 @@ def create_app():
             order_id=order_id, caliber=caliber, drying=drying,
             target_kg=tkg,
             max_humedad=float(max_humedad) if max_humedad else None,
-            temporada=temporada, pitted=pitted, notes=notes,
+            temporada=temporada, product_type=product_type, notes=notes,
         )
         db.session.add(line)
         db.session.commit()
@@ -958,31 +958,35 @@ def create_app():
         if request.method == 'POST':
             created = 0
             for line in order.lines:
-                exc_kg_str = request.form.get(f'exc_kg_{line.id}', '').strip()
-                exc_boxes_str = request.form.get(f'exc_boxes_{line.id}', '').strip()
-                try:
-                    exc_kg = float(exc_kg_str) if exc_kg_str else 0.0
-                except ValueError:
-                    exc_kg = 0.0
-                try:
-                    exc_boxes = int(exc_boxes_str) if exc_boxes_str else None
-                except ValueError:
-                    exc_boxes = None
+                for alloc in line.allocations:
+                    if not alloc.bin_id:
+                        continue
+                    exc_kg_str    = request.form.get(f'exc_kg_{alloc.id}', '').strip()
+                    exc_boxes_str = request.form.get(f'exc_boxes_{alloc.id}', '').strip()
+                    try:
+                        exc_kg = float(exc_kg_str) if exc_kg_str else 0.0
+                    except ValueError:
+                        exc_kg = 0.0
+                    try:
+                        exc_boxes = int(exc_boxes_str) if exc_boxes_str else None
+                    except ValueError:
+                        exc_boxes = None
 
-                if exc_kg > 0:
-                    s = Excedente(
-                        source_order_id=order_id,
-                        source_line_id=line.id,
-                        caliber=line.caliber,
-                        drying=line.drying,
-                        temporada=line.temporada,
-                        producto=line.spec_label,
-                        weight_kg=exc_kg,
-                        boxes=exc_boxes,
-                        status='available',
-                    )
-                    db.session.add(s)
-                    created += 1
+                    if exc_kg > 0:
+                        s = Excedente(
+                            source_order_id=order_id,
+                            source_line_id=line.id,
+                            source_bin_tarja=alloc.bin.bin_identifier,
+                            caliber=line.caliber,
+                            drying=line.drying,
+                            temporada=line.temporada,
+                            producto=line.spec_label,
+                            weight_kg=exc_kg,
+                            boxes=exc_boxes,
+                            status='available',
+                        )
+                        db.session.add(s)
+                        created += 1
 
             # Mark allocated bins/surplus as shipped
             allocs = Allocation.query.filter_by(order_id=order_id).all()
@@ -1089,6 +1093,10 @@ def _migrate(db_obj):
         # excedentes support
         'ALTER TABLE allocations ALTER COLUMN bin_id DROP NOT NULL',
         'ALTER TABLE allocations ADD COLUMN IF NOT EXISTS surplus_id INTEGER REFERENCES excedentes(id)',
+        # product_type replaces pitted on order lines
+        'ALTER TABLE order_lines ADD COLUMN IF NOT EXISTS product_type VARCHAR(20)',
+        # track which source bin each excedente came from
+        'ALTER TABLE excedentes ADD COLUMN IF NOT EXISTS source_bin_tarja VARCHAR(50)',
     ]
     with db_obj.engine.connect() as conn:
         for sql in stmts:

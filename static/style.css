@@ -238,6 +238,11 @@ tr.surplus-row      { background: #f0f8ff }
 .ok-line              { color: var(--purple-d); background: var(--ok-bg); padding: 8px 12px; border-radius: 8px; font-weight: 600 }
 .status-actions       { text-align: right; display: flex; flex-direction: column; gap: 8px; align-items: flex-end }
 .dispatch-exc-fields  { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line) }
+.dispatch-bins-list   { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px }
+.dispatch-bin-row     { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; padding: 8px 10px; background: var(--lavender-l); border-radius: var(--radius) }
+.dispatch-bin-row.surplus-note { background: transparent; padding: 4px 0; align-items: center }
+.dispatch-bin-info    { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 2px; justify-content: center }
+.dispatch-exc-inline  { display: flex; gap: 12px; flex-wrap: wrap }
 .sel-bar              { display: flex; align-items: center; justify-content: space-between; gap: 12px;
                         background: var(--lavender-l); border: 1px solid var(--lavender);
                         border-radius: var(--radius); padding: 10px 14px; margin: 8px 0 10px }

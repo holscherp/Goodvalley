@@ -32,8 +32,15 @@
   <label>Temporada</label>
   <input type="text" name="temporada" placeholder="(cualquiera)">
 </div>
-<div class="fld checkbox">
-  <label><input type="checkbox" name="pitted" value="1"> Sin carozo (deshuesado)</label>
+<div class="fld">
+  <label>Tipo de proceso</label>
+  <select name="product_type">
+    <option value="">Sin especificar</option>
+    <option value="tsc">TSC — Tiernizado sin carozo</option>
+    <option value="tcc">TCC — Tiernizado con carozo</option>
+    <option value="elliot">Elliot</option>
+    <option value="natural">Condición Natural (materia prima)</option>
+  </select>
 </div>
 {% endmacro %}
 

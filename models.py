@@ -15,6 +15,13 @@ DRYING_LABELS = {
     'termino_secado': 'Término secado',
 }
 
+PRODUCT_TYPE_LABELS = {
+    'tsc':     'TSC — Tiernizado sin carozo',
+    'tcc':     'TCC — Tiernizado con carozo',
+    'elliot':  'Elliot',
+    'natural': 'Condición Natural',
+}
+
 BIN_STATUS_LABELS = {
     'available': 'Disponible',
     'allocated': 'Asignado',
@@ -119,9 +126,9 @@ class OrderLine(db.Model):
     drying      = db.Column(db.String(30),  nullable=True)
     target_kg   = db.Column(db.Float, nullable=False)
     max_humedad = db.Column(db.Float, nullable=True)
-    temporada   = db.Column(db.String(10),  nullable=True)
-    pitted      = db.Column(db.Boolean, default=False)
-    notes       = db.Column(db.String(200), nullable=True)
+    temporada    = db.Column(db.String(10),  nullable=True)
+    product_type = db.Column(db.String(20), nullable=True)
+    notes        = db.Column(db.String(200), nullable=True)
 
     allocations = db.relationship(
         'Allocation', backref='line',
@@ -149,12 +156,18 @@ class OrderLine(db.Model):
         return self.allocated_kg >= self.target_kg
 
     @property
+    def product_type_label(self):
+        return PRODUCT_TYPE_LABELS.get(self.product_type, self.product_type or '')
+
+    @property
     def spec_label(self):
         parts = []
         if self.caliber:
             parts.append(self.caliber)
         if self.drying:
             parts.append(DRYING_LABELS.get(self.drying, self.drying))
+        if self.product_type:
+            parts.append(PRODUCT_TYPE_LABELS.get(self.product_type, self.product_type))
         return ' · '.join(parts) if parts else 'Cualquier calibre/secado'
 
 
@@ -162,9 +175,10 @@ class Excedente(db.Model):
     __tablename__ = 'excedentes'
 
     id              = db.Column(db.Integer, primary_key=True)
-    source_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=True)
-    source_line_id  = db.Column(db.Integer, db.ForeignKey('order_lines.id'), nullable=True)
-    caliber         = db.Column(db.String(20),  nullable=True)
+    source_order_id  = db.Column(db.Integer, db.ForeignKey('orders.id'), nullable=True)
+    source_line_id   = db.Column(db.Integer, db.ForeignKey('order_lines.id'), nullable=True)
+    source_bin_tarja = db.Column(db.String(50), nullable=True)
+    caliber          = db.Column(db.String(20),  nullable=True)
     drying          = db.Column(db.String(30),  nullable=True)
     temporada       = db.Column(db.String(10),  nullable=True)
     producto        = db.Column(db.String(200), nullable=True)

@@ -17,7 +17,6 @@
       <div class="line-spec">
         <span class="spec-main">{{ line.spec_label }}</span>
         <span class="spec-sub">
-          {% if line.pitted %}sin carozo · {% endif %}
           {% if line.temporada %}temporada {{ line.temporada }} · {% endif %}
           {% if line.max_humedad %}hum máx {{ line.max_humedad }}% · {% endif %}
           {{ line.allocations | length }} bins/excedentes asignados
@@ -32,16 +31,38 @@
       </div>
     </div>
 
-    <div class="dispatch-exc-fields">
-      <div class="fld">
-        <label>Excedente (kg sobrantes a registrar como disponibles)</label>
-        <input type="number" step="0.1" min="0" name="exc_kg_{{ line.id }}" value="" placeholder="0">
-      </div>
-      <div class="fld">
-        <label>Cajas (opcional)</label>
-        <input type="number" min="0" name="exc_boxes_{{ line.id }}" placeholder="—">
-      </div>
+    {% if line.allocations %}
+    <div class="dispatch-bins-list">
+      {% for alloc in line.allocations %}
+        {% if alloc.bin %}
+        <div class="dispatch-bin-row">
+          <div class="dispatch-bin-info">
+            <span class="mono">Bin {{ alloc.bin.bin_identifier }}</span>
+            <span class="muted">{{ "{:,.1f}".format(alloc.bin.weight_kg) }} kg
+              · {{ alloc.bin.caliber or 'N/A' }}
+              · {{ DRYING_LABELS.get(alloc.bin.drying, alloc.bin.drying or '—') }}
+            </span>
+          </div>
+          <div class="dispatch-exc-inline">
+            <div class="fld">
+              <label>Excedente (kg sobrante de este bin)</label>
+              <input type="number" step="0.1" min="0" name="exc_kg_{{ alloc.id }}" placeholder="0">
+            </div>
+            <div class="fld">
+              <label>Cajas (opcional)</label>
+              <input type="number" min="0" name="exc_boxes_{{ alloc.id }}" placeholder="—">
+            </div>
+          </div>
+        </div>
+        {% elif alloc.surplus %}
+        <div class="dispatch-bin-row surplus-note">
+          <span class="pill pill-exc">Excedente · Orden #{{ alloc.surplus.source_order_id or '—' }}</span>
+          <span class="muted">{{ "{:,.1f}".format(alloc.surplus.weight_kg) }} kg — se despacha completo</span>
+        </div>
+        {% endif %}
+      {% endfor %}
     </div>
+    {% endif %}
   </section>
   {% endfor %}
 
