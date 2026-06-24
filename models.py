@@ -9,6 +9,64 @@ CALIBER_OPTIONS = [
     '80/90','90/100','100/120','120/144','144/170','170+',
 ]
 
+# ── Yield / rendimiento tables (from Disponible Master.xlsx → Rendimientos) ──
+
+# Caliber text range → numeric midpoint (AJ:AK table in MP Comprometida)
+CALIBER_TO_NUM = {
+    '20/30': 25, '30/40': 35, '40/50': 45, '50/60': 55,
+    '60/70': 65, '70/80': 75, '80/90': 85, '80/100': 90,
+    '90/100': 95, '100/120': 110, '120/144': 132,
+    '144/170': 157, '170+': 185,
+}
+
+# Rend. Usado (= Rend. Teórico by default) per (tipo, caliber_num)
+# tipo keys: 'tsc', 'tcc', 'ss' (= cancha/tss), 'elliot', 'natural'
+_YIELD_TABLE = {
+    ('tsc',    35): 0.83, ('tsc',    45): 0.83, ('tsc',    55): 0.85,
+    ('tsc',    65): 0.83, ('tsc',    75): 0.82, ('tsc',    85): 0.79,
+    ('tsc',    95): 0.78, ('tsc',   110): 0.75, ('tsc',   132): 0.72,
+    ('tcc',    35): 1.10, ('tcc',    45): 1.10, ('tcc',    55): 1.10,
+    ('tcc',    65): 1.10, ('tcc',    75): 1.10, ('tcc',    85): 1.10,
+    ('tcc',    95): 1.10, ('tcc',   110): 1.10, ('tcc',   132): 1.10,
+    ('ss',     35): 0.75, ('ss',     45): 0.75, ('ss',     55): 0.75,
+    ('ss',     65): 0.75, ('ss',     75): 0.75, ('ss',     85): 0.75,
+    ('ss',     95): 0.75,
+    ('elliot', 95): 0.75, ('elliot',110): 0.75, ('elliot',132): 0.75,
+    ('natural',35): 0.98, ('natural',45): 0.98, ('natural',55): 0.98,
+    ('natural',65): 0.98, ('natural',75): 0.98, ('natural',85): 0.98,
+    ('natural',90): 0.98, ('natural',95): 0.98, ('natural',110): 0.98,
+    ('natural',132): 0.98, ('natural',157): 0.98,
+}
+
+# Flat fallback yields when caliber is unknown
+_FLAT_YIELD = {
+    'tsc': 0.80, 'tcc': 1.10, 'ss': 0.75, 'elliot': 0.75, 'natural': 0.98,
+}
+
+
+def _tipo_key(product_type, drying):
+    """Map web-app product_type + drying to the Rendimientos tipo key."""
+    if product_type == 'tsc':     return 'tsc'
+    if product_type == 'tcc':     return 'tcc'
+    if product_type == 'tss':     return 'ss'   # field-dried / sin semilla
+    if product_type == 'elliot':  return 'elliot'
+    if product_type == 'natural': return 'natural'
+    # Fallback on drying when product_type not set
+    if drying == 'cancha':        return 'ss'
+    if drying == 'horno':         return 'tsc'
+    return None
+
+
+def get_yield(product_type, drying, caliber):
+    """Return the Rend. Usado for the given line spec, or None if unknown."""
+    tipo = _tipo_key(product_type, drying)
+    if tipo is None:
+        return None
+    cal_num = CALIBER_TO_NUM.get(caliber or '')
+    if cal_num is not None:
+        return _YIELD_TABLE.get((tipo, cal_num), _FLAT_YIELD.get(tipo))
+    return _FLAT_YIELD.get(tipo)
+
 DRYING_LABELS = {
     'cancha':         'Cancha / Sol',
     'horno':          'Horno',
@@ -147,14 +205,29 @@ class OrderLine(db.Model):
         return total
 
     @property
+    def yield_rate(self):
+        """Rend. Usado for this line's product_type + drying + caliber."""
+        return get_yield(self.product_type, self.drying, self.caliber)
+
+    @property
+    def mp_kg_needed(self):
+        """Raw-material kg needed = target_kg (finished PT) / yield.
+        Falls back to target_kg when yield is unknown."""
+        y = self.yield_rate
+        if y and y > 0:
+            return self.target_kg / y
+        return self.target_kg
+
+    @property
     def pct(self):
-        if self.target_kg:
-            return min(100, round(self.allocated_kg / self.target_kg * 100))
+        needed = self.mp_kg_needed
+        if needed:
+            return min(100, round(self.allocated_kg / needed * 100))
         return 0
 
     @property
     def satisfied(self):
-        return self.allocated_kg >= self.target_kg
+        return self.allocated_kg >= self.mp_kg_needed
 
     @property
     def product_type_label(self):

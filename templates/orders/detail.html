@@ -96,11 +96,16 @@
     <div class="line-progress">
       <div class="bar"><div class="bar-fill" style="width:{{ line.pct }}%"></div></div>
       <div class="bar-lbl">
-        <strong>{{ "{:,.1f}".format(line.allocated_kg) }}</strong> / {{ "{:,.1f}".format(line.target_kg) }} kg asignados
+        <strong>{{ "{:,.1f}".format(line.allocated_kg) }}</strong>
+        / {{ "{:,.1f}".format(line.mp_kg_needed) }} kg MP asignados
+        {% if line.yield_rate and line.mp_kg_needed != line.target_kg %}
+          <span class="muted">({{ "{:,.1f}".format(line.target_kg) }} kg PT
+          ÷ {{ "%.0f"|format(line.yield_rate * 100) }}% rend.)</span>
+        {% endif %}
         {% if line.satisfied %}
           <span class="ok-tag">✓ completo</span>
         {% else %}
-          <span class="need-tag">faltan {{ "{:,.1f}".format(line.target_kg - line.allocated_kg) }} kg</span>
+          <span class="need-tag">faltan {{ "{:,.1f}".format(line.mp_kg_needed - line.allocated_kg) }} kg MP</span>
         {% endif %}
       </div>
     </div>
