@@ -403,6 +403,7 @@ def create_app():
                         lf.write('► Importando bins a la base de datos...\n')
                         lf.flush()
                     with _app.app_context():
+                        from models import OrderLine, Order, Allocation
                         existing_map = {
                             row[0]: row[1] for row in
                             db.session.query(Bin.bin_identifier, Bin.id)
@@ -411,6 +412,7 @@ def create_app():
                         all_ids = {row[0] for row in db.session.query(Bin.bin_identifier).all()}
                         added = updated = skipped = 0
                         new_batch = []
+                        to_allocate = []
                         for b in bins_data:
                             bid = str(b.get('bin_identifier', '')).strip()
                             if not bid: skipped += 1; continue
@@ -445,6 +447,9 @@ def create_app():
                                 ))
                                 all_ids.add(bid)
                                 added += 1
+                                ot = b.get('ot')
+                                if ot:
+                                    to_allocate.append((bid, str(ot).strip()))
                                 if len(new_batch) >= 500:
                                     db.session.bulk_save_objects(new_batch)
                                     db.session.commit()
@@ -454,8 +459,42 @@ def create_app():
                         if new_batch:
                             db.session.bulk_save_objects(new_batch)
                         db.session.commit()
+
+                        # Auto-allocate new bins via OT → order line match
+                        alloc_count = 0
+                        if to_allocate:
+                            ot_line_map = {}
+                            for ln in (OrderLine.query
+                                       .join(Order, OrderLine.order_id == Order.id)
+                                       .filter(Order.status.in_(['open', 'confirmed']))
+                                       .filter(OrderLine.notes.isnot(None))
+                                       .all()):
+                                for part in (ln.notes or '').split('·'):
+                                    part = part.strip()
+                                    if part.startswith('OT '):
+                                        ot_key = part[3:].strip()
+                                        ot_line_map.setdefault(ot_key, ln)
+                            for bid, ot in to_allocate:
+                                line = ot_line_map.get(ot)
+                                if not line:
+                                    continue
+                                b_obj = Bin.query.filter_by(
+                                    bin_identifier=bid, status='available').first()
+                                if not b_obj:
+                                    continue
+                                if Allocation.query.filter_by(bin_id=b_obj.id).first():
+                                    continue
+                                db.session.add(Allocation(
+                                    order_id=line.order_id, line_id=line.id, bin_id=b_obj.id))
+                                b_obj.status = 'allocated'
+                                alloc_count += 1
+                            db.session.commit()
+
                     with open(log_path, 'a') as lf:
-                        lf.write(f'✓ Bins: {added} nuevos, {updated} actualizados, {skipped} omitidos.\n')
+                        lf.write(
+                            f'✓ Bins: {added} nuevos, {updated} actualizados, '
+                            f'{skipped} omitidos, {alloc_count} auto-asignados.\n'
+                        )
                         lf.flush()
                 except Exception as e:
                     with open(log_path, 'a') as lf:
@@ -767,20 +806,20 @@ def create_app():
             return redirect(url_for('index'))
 
         try:
-            # Load existing available bins into a dict keyed by identifier
+            from models import OrderLine, Order, Allocation
             existing_map = {
                 row[0]: row[1] for row in
                 db.session.query(Bin.bin_identifier, Bin.id)
                 .filter(Bin.status == 'available').all()
             }
-            # Also track all identifiers (including allocated/shipped) to avoid re-adding
             all_ids = {
                 row[0] for row in db.session.query(Bin.bin_identifier).all()
             }
 
             added = updated = skipped = 0
             new_batch = []
-            incoming_ids = set()
+            # track (bin_identifier, ot) for new bins that carry OT info
+            to_allocate = []
 
             for b in bins_data:
                 bid = str(b.get('bin_identifier', '')).strip()
@@ -792,11 +831,9 @@ def create_app():
                     skipped += 1
                     continue
 
-                incoming_ids.add(bid)
                 weight = float(b.get('weight_kg') or 0)
 
                 if bid in existing_map:
-                    # Update available bin with fresh data from pWarehouse
                     db.session.query(Bin).filter_by(id=existing_map[bid]).update({
                         'weight_kg': weight,
                         'humedad': b.get('humedad'),
@@ -823,6 +860,9 @@ def create_app():
                     ))
                     all_ids.add(bid)
                     added += 1
+                    ot = b.get('ot')
+                    if ot:
+                        to_allocate.append((bid, str(ot).strip()))
                     if len(new_batch) >= 500:
                         db.session.bulk_save_objects(new_batch)
                         db.session.commit()
@@ -834,7 +874,43 @@ def create_app():
                 db.session.bulk_save_objects(new_batch)
             db.session.commit()
 
-            flash(f'Sync completo: {added} nuevos, {updated} actualizados, {skipped} omitidos.', 'ok')
+            # Auto-allocate new bins whose OT matches an open order line
+            alloc_count = 0
+            if to_allocate:
+                # Build OT → line map from open/confirmed orders
+                ot_line_map = {}
+                for ln in (OrderLine.query
+                           .join(Order, OrderLine.order_id == Order.id)
+                           .filter(Order.status.in_(['open', 'confirmed']))
+                           .filter(OrderLine.notes.isnot(None))
+                           .all()):
+                    for part in (ln.notes or '').split('·'):
+                        part = part.strip()
+                        if part.startswith('OT '):
+                            ot_key = part[3:].strip()
+                            ot_line_map.setdefault(ot_key, ln)
+
+                for bid, ot in to_allocate:
+                    line = ot_line_map.get(ot)
+                    if not line:
+                        continue
+                    b_obj = Bin.query.filter_by(
+                        bin_identifier=bid, status='available').first()
+                    if not b_obj:
+                        continue
+                    already = Allocation.query.filter_by(bin_id=b_obj.id).first()
+                    if already:
+                        continue
+                    db.session.add(Allocation(
+                        order_id=line.order_id, line_id=line.id, bin_id=b_obj.id))
+                    b_obj.status = 'allocated'
+                    alloc_count += 1
+                db.session.commit()
+
+            msg = f'Sync completo: {added} nuevos, {updated} actualizados, {skipped} omitidos'
+            if alloc_count:
+                msg += f', {alloc_count} auto-asignados a órdenes'
+            flash(msg + '.', 'ok')
         except Exception as e:
             db.session.rollback()
             flash(f'Error al importar: {e}', 'err')

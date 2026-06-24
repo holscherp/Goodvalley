@@ -525,11 +525,14 @@ async def main():
             if info.get('temporada') and not pallet.get('temporada'):
                 pallet['temporada'] = info['temporada']
 
-    # ── Link raw bins → pallets via historico xlsx ────────────────────────────
-    # historico EGRESO A PROCESO rows: IDBINS2 (raw bin tarja) links to OT,
-    # and pallets_data has OT → finished pallet tarja.
-    # We store bin_identifiers on each pallet so import-pallets can tag them.
-    if bins_ok and pallets_ok and bins_data and pallets_data and HISTORICO_PATH.exists():
+    # ── Link raw bins and pallets via historico xlsx ──────────────────────────
+    # historico EGRESO A PROCESO rows: IDBINS2 (raw bin tarja) links to OT.
+    # We use this to:
+    #   (a) add 'ot' to each raw bin so upload can auto-allocate it to the
+    #       order line that has "OT {ot}" in its notes field
+    #   (b) add 'bin_identifiers' to each pallet (list of IDBINS2 raw tarjas
+    #       that fed into that OT) so import-pallets can record the connection
+    if HISTORICO_PATH.exists() and (bins_ok or pallets_ok):
         try:
             import pandas as _pd
             hist = _pd.read_excel(HISTORICO_PATH)
@@ -539,21 +542,40 @@ async def main():
             egreso = egreso[egreso['IDBINS2'].notna() & (egreso['IDBINS2'] != 'nan')]
             egreso['OT_s'] = egreso['OT'].astype(str).str.strip()
 
-            # OT → [idbins2, ...] (raw bin identifiers that fed into this OT)
-            ot_to_bins = {}
+            # OT → [idbins2, ...]
+            ot_to_idbins = {}
             for ot, grp in egreso.groupby('OT_s'):
-                ot_to_bins[ot] = sorted(grp['IDBINS2'].unique().tolist())
+                ot_to_idbins[ot] = sorted(grp['IDBINS2'].unique().tolist())
 
-            # Attach raw bin identifiers list to each pallet record
-            for pallet in pallets_data:
-                ot = pallet.get('ot', '')
-                pallet['bin_identifiers'] = ot_to_bins.get(ot, [])
+            # Reverse: idbins2 → OT (for enriching raw bins)
+            idbins_to_ot = {}
+            for ot, idbins_list in ot_to_idbins.items():
+                for idb in idbins_list:
+                    idbins_to_ot[idb] = ot
 
-            total_linked = sum(len(p.get('bin_identifiers', [])) for p in pallets_data)
-            print(f'✓ Historico: {total_linked} raw bins vinculados a pallets via OT')
+            # (a) Tag each raw bin with its OT so the upload endpoint can
+            #     auto-allocate it to the matching order line
+            if bins_ok and bins_data:
+                n_tagged = 0
+                for bin_rec in bins_data:
+                    bid = str(bin_rec.get('bin_identifier', '')).strip()
+                    ot = idbins_to_ot.get(bid)
+                    if ot:
+                        bin_rec['ot'] = ot
+                        n_tagged += 1
+                print(f'✓ Historico: {n_tagged}/{len(bins_data)} raw bins enriquecidos con OT')
+
+            # (b) Tag each pallet with the raw bin IDs that went into its OT
+            if pallets_ok and pallets_data:
+                for pallet in pallets_data:
+                    ot = pallet.get('ot', '')
+                    pallet['bin_identifiers'] = ot_to_idbins.get(ot, [])
+                total_linked = sum(len(p.get('bin_identifiers', [])) for p in pallets_data)
+                print(f'✓ Historico: {total_linked} raw bins vinculados a pallets via OT')
+
         except Exception as e:
             print(f'  WARN historico linking: {e}', file=sys.stderr)
-    elif not HISTORICO_PATH.exists():
+    else:
         print(f'  INFO: {HISTORICO_PATH} no encontrado — sin linking de bins crudos')
 
     if bins_ok:
