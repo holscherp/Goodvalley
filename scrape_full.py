@@ -13,6 +13,8 @@ import asyncio, json, os, re, sys, datetime
 from pathlib import Path
 from playwright.async_api import async_playwright
 
+HISTORICO_PATH = Path.home() / 'Desktop' / 'historico para Camilo.xlsx'
+
 PWAREHOUSE_URL = os.environ.get('PWAREHOUSE_URL', 'http://190.211.168.247:8077')
 RUT            = os.environ.get('PWAREHOUSE_RUT',  '20664661-6')
 PASSWORD       = os.environ.get('PWAREHOUSE_PASS', 'estante991')
@@ -116,11 +118,22 @@ async def _login(page, label):
 
 
 async def _click_text(page, *texts):
+    # UniGUI/ExtJS nav items are often <span> or <div>, not <a>/<button>
     for text in texts:
-        loc = page.locator(f'a:has-text("{text}"), button:has-text("{text}")')
-        if await loc.count():
-            await loc.first.click()
-            return True
+        for selector in [
+            f'a:has-text("{text}")',
+            f'button:has-text("{text}")',
+            f'span:has-text("{text}")',
+            f'td:has-text("{text}")',
+            f'div:has-text("{text}")',
+        ]:
+            try:
+                loc = page.locator(selector).first
+                if await loc.count():
+                    await loc.click()
+                    return True
+            except Exception:
+                pass
     return False
 
 
@@ -355,16 +368,21 @@ async def scrape_pallets_section(ctx):
         await _login(page, 'PALLETS')
         await page.wait_for_timeout(3000)
 
-        if not await _click_text(page,
-                'Pallets en bodega', 'Pallets en Bodega',
-                'Pallets bodega', 'Pallets'):
-            raise RuntimeError('[PALLETS] Menú Pallets en Bodega no encontrado')
+        found = await _click_text(page,
+            'Pallets en bodega', 'Pallets en Bodega',
+            'Pallets bodega', 'Pallets')
+        if not found:
+            # Dump page text + screenshot so we can see what the menu looks like
+            SCREENSHOT_DIR.mkdir(exist_ok=True)
+            await page.screenshot(path=str(SCREENSHOT_DIR / 'pallets_nav_fail.png'), full_page=True)
+            body = await page.inner_text('body')
+            (SCREENSHOT_DIR / 'pallets_nav_fail.txt').write_text(body[:4000])
+            raise RuntimeError('[PALLETS] Menú Pallets en Bodega no encontrado — ver pallets_nav_fail.png')
 
         await page.wait_for_timeout(3000)
         await page.wait_for_load_state('networkidle', timeout=15000)
 
         rows, _ = await _capture_rows(page, 'PALLETS')
-        # Save a sample for column-mapping debugging
         SCREENSHOT_DIR.mkdir(exist_ok=True)
         if rows:
             (SCREENSHOT_DIR / 'pallets_sample.json').write_text(
@@ -380,10 +398,15 @@ async def scrape_procesos_section(ctx):
         await _login(page, 'PROC')
         await page.wait_for_timeout(3000)
 
-        if not await _click_text(page,
-                'Informe procesos', 'Informe Procesos',
-                'Procesos', 'Proceso'):
-            raise RuntimeError('[PROC] Menú Procesos no encontrado')
+        found = await _click_text(page,
+            'Informe procesos', 'Informe Procesos',
+            'Procesos', 'Proceso')
+        if not found:
+            SCREENSHOT_DIR.mkdir(exist_ok=True)
+            await page.screenshot(path=str(SCREENSHOT_DIR / 'proc_nav_fail.png'), full_page=True)
+            body = await page.inner_text('body')
+            (SCREENSHOT_DIR / 'proc_nav_fail.txt').write_text(body[:4000])
+            raise RuntimeError('[PROC] Menú Procesos no encontrado — ver proc_nav_fail.png')
 
         await page.wait_for_timeout(3000)
         await page.wait_for_load_state('networkidle', timeout=15000)
@@ -492,15 +515,46 @@ async def main():
     pallets_ok = not isinstance(pallets_data, Exception)
     proc_ok    = not isinstance(proc_data,    Exception)
 
-    # Enrich pallets with secado/temporada from procesos
+    # ── Enrich pallets with secado/temporada from procesos ───────────────────
     if pallets_ok and proc_ok and pallets_data and proc_data:
         by_ot = {p['ot']: p for p in reversed(proc_data)}  # last OT wins
         for pallet in pallets_data:
             info = by_ot.get(pallet['ot'], {})
-            if info.get('drying') and not pallet.get('drying'):
+            if info.get('drying'):
                 pallet['drying'] = info['drying']
             if info.get('temporada') and not pallet.get('temporada'):
                 pallet['temporada'] = info['temporada']
+
+    # ── Link raw bins → pallets via historico xlsx ────────────────────────────
+    # historico EGRESO A PROCESO rows: IDBINS2 (raw bin tarja) links to OT,
+    # and pallets_data has OT → finished pallet tarja.
+    # We store bin_identifiers on each pallet so import-pallets can tag them.
+    if bins_ok and pallets_ok and bins_data and pallets_data and HISTORICO_PATH.exists():
+        try:
+            import pandas as _pd
+            hist = _pd.read_excel(HISTORICO_PATH)
+            egreso = hist[hist['MOVIMIENTO'] == 'EGRESO A PROCESO'].copy()
+            egreso['IDBINS2'] = (egreso['IDBINS2'].astype(str).str.strip()
+                                 .str.split('.').str[0])
+            egreso = egreso[egreso['IDBINS2'].notna() & (egreso['IDBINS2'] != 'nan')]
+            egreso['OT_s'] = egreso['OT'].astype(str).str.strip()
+
+            # OT → [idbins2, ...] (raw bin identifiers that fed into this OT)
+            ot_to_bins = {}
+            for ot, grp in egreso.groupby('OT_s'):
+                ot_to_bins[ot] = sorted(grp['IDBINS2'].unique().tolist())
+
+            # Attach raw bin identifiers list to each pallet record
+            for pallet in pallets_data:
+                ot = pallet.get('ot', '')
+                pallet['bin_identifiers'] = ot_to_bins.get(ot, [])
+
+            total_linked = sum(len(p.get('bin_identifiers', [])) for p in pallets_data)
+            print(f'✓ Historico: {total_linked} raw bins vinculados a pallets via OT')
+        except Exception as e:
+            print(f'  WARN historico linking: {e}', file=sys.stderr)
+    elif not HISTORICO_PATH.exists():
+        print(f'  INFO: {HISTORICO_PATH} no encontrado — sin linking de bins crudos')
 
     if bins_ok:
         BINS_OUT.write_text(json.dumps(bins_data, indent=2, ensure_ascii=False))
