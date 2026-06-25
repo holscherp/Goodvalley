@@ -36,11 +36,21 @@
   <label>Tipo de proceso</label>
   <select name="product_type">
     <option value="">Sin especificar</option>
-    <option value="tsc">TSC — Tiernizado sin carozo</option>
-    <option value="tcc">TCC — Tiernizado con carozo</option>
-    <option value="tss">TSS — Tiernizado sin semilla</option>
+    <option value="tsc">TSC</option>
+    <option value="ss">SS</option>
+    <option value="tcc">TCC</option>
     <option value="elliot">Elliot</option>
-    <option value="natural">Condición Natural (materia prima)</option>
+    <option value="cn">CN</option>
+  </select>
+</div>
+<div class="fld">
+  <label>Calidad de fruta</label>
+  <select name="fruit_quality">
+    <option value="">Sin especificar</option>
+    <option value="deluxe">Deluxe</option>
+    <option value="premium">Premium</option>
+    <option value="estandar">Estándar</option>
+    <option value="base">Base</option>
   </select>
 </div>
 {% endmacro %}
@@ -88,6 +98,7 @@
       <span class="spec-main">{{ line.spec_label }}</span>
       <span class="spec-sub">
         {% if line.product_type %}{{ line.product_type_label }} · {% endif %}
+        {% if line.fruit_quality %}{{ line.fruit_quality_label }} · {% endif %}
         {% if line.temporada %}temporada {{ line.temporada }} · {% endif %}
         {% if line.max_humedad %}hum máx {{ line.max_humedad }}% · {% endif %}
         {% if line.notes %}{{ line.notes }}{% endif %}

@@ -48,13 +48,28 @@ def _tipo_key(product_type, drying):
     """Map web-app product_type + drying to the Rendimientos tipo key."""
     if product_type == 'tsc':     return 'tsc'
     if product_type == 'tcc':     return 'tcc'
-    if product_type == 'tss':     return 'ss'   # field-dried / sin semilla
+    if product_type == 'tss':     return 'ss'
+    if product_type == 'ss':      return 'ss'
     if product_type == 'elliot':  return 'elliot'
     if product_type == 'natural': return 'natural'
-    # Fallback on drying when product_type not set
+    if product_type == 'cn':      return 'natural'
     if drying == 'cancha':        return 'ss'
     if drying == 'horno':         return 'tsc'
     return None
+
+
+_yield_overrides_cache = {}  # (tipo, caliber_num) → float, populated from DB at startup
+
+
+def load_yield_overrides():
+    global _yield_overrides_cache
+    try:
+        _yield_overrides_cache = {
+            (o.tipo, o.caliber_num): o.rend_teorico
+            for o in YieldOverride.query.all()
+        }
+    except Exception:
+        _yield_overrides_cache = {}
 
 
 def get_yield(product_type, drying, caliber):
@@ -64,6 +79,9 @@ def get_yield(product_type, drying, caliber):
         return None
     cal_num = CALIBER_TO_NUM.get(caliber or '')
     if cal_num is not None:
+        override = _yield_overrides_cache.get((tipo, cal_num))
+        if override is not None:
+            return override
         return _YIELD_TABLE.get((tipo, cal_num), _FLAT_YIELD.get(tipo))
     return _FLAT_YIELD.get(tipo)
 
@@ -74,11 +92,20 @@ DRYING_LABELS = {
 }
 
 PRODUCT_TYPE_LABELS = {
-    'tsc':     'TSC — Tiernizado sin carozo',
-    'tcc':     'TCC — Tiernizado con carozo',
-    'tss':     'TSS — Tiernizado sin semilla',
+    'tsc':     'TSC',
+    'tcc':     'TCC',
+    'tss':     'SS',
+    'ss':      'SS',
     'elliot':  'Elliot',
-    'natural': 'Condición Natural',
+    'natural': 'CN',
+    'cn':      'CN',
+}
+
+FRUIT_QUALITY_LABELS = {
+    'deluxe':   'Deluxe',
+    'premium':  'Premium',
+    'estandar': 'Estándar',
+    'base':     'Base',
 }
 
 BIN_STATUS_LABELS = {
@@ -110,6 +137,18 @@ def _parse_producto(producto):
     m = _CALIBER_RE.search(p)
     caliber = m.group(1) if m else None
     return caliber, drying
+
+
+class YieldOverride(db.Model):
+    __tablename__ = 'yield_overrides'
+
+    id           = db.Column(db.Integer, primary_key=True)
+    tipo         = db.Column(db.String(20),  nullable=False)
+    caliber_num  = db.Column(db.Integer,     nullable=False)
+    rend_teorico = db.Column(db.Float,       nullable=False)
+    comentario   = db.Column(db.String(200), nullable=True)
+
+    __table_args__ = (db.UniqueConstraint('tipo', 'caliber_num', name='uq_yield_tipo_cal'),)
 
 
 class Bin(db.Model):
@@ -186,8 +225,9 @@ class OrderLine(db.Model):
     target_kg   = db.Column(db.Float, nullable=False)
     max_humedad = db.Column(db.Float, nullable=True)
     temporada    = db.Column(db.String(10),  nullable=True)
-    product_type = db.Column(db.String(20), nullable=True)
-    notes        = db.Column(db.String(200), nullable=True)
+    product_type  = db.Column(db.String(20),  nullable=True)
+    fruit_quality = db.Column(db.String(20),  nullable=True)
+    notes         = db.Column(db.String(200), nullable=True)
 
     allocations = db.relationship(
         'Allocation', backref='line',
@@ -232,6 +272,10 @@ class OrderLine(db.Model):
     @property
     def product_type_label(self):
         return PRODUCT_TYPE_LABELS.get(self.product_type, self.product_type or '')
+
+    @property
+    def fruit_quality_label(self):
+        return FRUIT_QUALITY_LABELS.get(self.fruit_quality, self.fruit_quality or '')
 
     @property
     def spec_label(self):

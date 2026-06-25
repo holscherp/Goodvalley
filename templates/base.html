@@ -21,6 +21,8 @@
        class="{{ 'on' if request.endpoint and 'bin' in request.endpoint else '' }}">Inventario de Bins</a>
     <a href="{{ url_for('list_orders') }}"
        class="{{ 'on' if request.endpoint and 'order' in request.endpoint else '' }}">Órdenes de Venta</a>
+    <a href="{{ url_for('rendimientos') }}"
+       class="{{ 'on' if request.endpoint and 'rendimiento' in request.endpoint else '' }}">Rendimientos</a>
   </nav>
   <div class="topbar-actions">
     <button class="btn btn-pw" id="sync-full-btn"

@@ -245,7 +245,9 @@ tr.surplus-row      { background: #f0f8ff }
 .dispatch-exc-inline  { display: flex; gap: 12px; flex-wrap: wrap }
 .sel-bar              { display: flex; align-items: center; justify-content: space-between; gap: 12px;
                         background: var(--lavender-l); border: 1px solid var(--lavender);
-                        border-radius: var(--radius); padding: 10px 14px; margin: 8px 0 10px }
+                        border-radius: var(--radius); padding: 10px 14px; margin: 8px 0 10px;
+                        position: sticky; top: 64px; z-index: 8;
+                        box-shadow: 0 2px 8px rgba(75,24,104,.15); }
 .note                 { background: #fffbe9; border: 1px solid #f0e3b5; border-radius: 8px; padding: 8px 12px }
 details.add-line      { margin: 18px 0 }
 details.add-line summary  { cursor: pointer; font-weight: 600; color: var(--purple); padding: 8px 0 }
@@ -253,6 +255,25 @@ details.search-bins summary { cursor: pointer; font-size: 13px; color: var(--pur
 details.search-bins   { margin: 10px 0 }
 
 .empty { text-align: center; color: var(--muted); padding: 26px }
+
+/* ── Rendimientos table inputs ── */
+.yield-input {
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #fff;
+}
+.yield-input:disabled {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink);
+  cursor: default;
+}
+.yield-input[type="number"]:disabled { -moz-appearance: textfield }
+td.rend-teorico-cell { background: #fffbe0 }
+th.rend-teorico-th   { background: #fffbe0 }
 
 .open-btn {
   display: inline-block;

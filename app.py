@@ -134,10 +134,13 @@ def create_app():
     db.init_app(app)
 
     with app.app_context():
-        from models import Bin, Order, OrderLine, Allocation, Excedente  # noqa: F401
+        from models import Bin, Order, OrderLine, Allocation, Excedente, YieldOverride  # noqa: F401
         db.create_all()
 
         _migrate(db)
+
+        from models import load_yield_overrides
+        load_yield_overrides()
 
     # ── Routes ────────────────────────────────────────────────────────────────
 
@@ -1010,13 +1013,14 @@ def create_app():
             flash('El nombre del cliente es obligatorio.', 'err')
             return redirect(url_for('list_orders'))
 
-        caliber      = request.form.get('caliber')      or None
-        drying       = request.form.get('drying')       or None
-        target_kg    = request.form.get('target_kg', '0')
-        max_humedad  = request.form.get('max_humedad')  or None
-        temporada    = request.form.get('temporada')    or None
-        product_type = request.form.get('product_type') or None
-        line_notes   = request.form.get('line_notes', '').strip() or None
+        caliber       = request.form.get('caliber')       or None
+        drying        = request.form.get('drying')        or None
+        target_kg     = request.form.get('target_kg', '0')
+        max_humedad   = request.form.get('max_humedad')   or None
+        temporada     = request.form.get('temporada')     or None
+        product_type  = request.form.get('product_type')  or None
+        fruit_quality = request.form.get('fruit_quality') or None
+        line_notes    = request.form.get('line_notes', '').strip() or None
 
         try:
             tkg = float(target_kg)
@@ -1031,7 +1035,8 @@ def create_app():
             order_id=order.id, caliber=caliber, drying=drying,
             target_kg=tkg,
             max_humedad=float(max_humedad) if max_humedad else None,
-            temporada=temporada, product_type=product_type, notes=line_notes,
+            temporada=temporada, product_type=product_type,
+            fruit_quality=fruit_quality, notes=line_notes,
         )
         db.session.add(line)
         db.session.commit()
@@ -1109,13 +1114,14 @@ def create_app():
             flash('No se pueden agregar líneas a una orden cerrada.', 'err')
             return redirect(url_for('order_detail', order_id=order_id))
 
-        caliber      = request.form.get('caliber')      or None
-        drying       = request.form.get('drying')       or None
-        target_kg    = request.form.get('target_kg',  '0')
-        max_humedad  = request.form.get('max_humedad')  or None
-        temporada    = request.form.get('temporada')    or None
-        product_type = request.form.get('product_type') or None
-        notes        = request.form.get('notes', '').strip() or None
+        caliber       = request.form.get('caliber')       or None
+        drying        = request.form.get('drying')        or None
+        target_kg     = request.form.get('target_kg',  '0')
+        max_humedad   = request.form.get('max_humedad')   or None
+        temporada     = request.form.get('temporada')     or None
+        product_type  = request.form.get('product_type')  or None
+        fruit_quality = request.form.get('fruit_quality') or None
+        notes         = request.form.get('notes', '').strip() or None
 
         try:
             tkg = float(target_kg)
@@ -1126,7 +1132,8 @@ def create_app():
             order_id=order_id, caliber=caliber, drying=drying,
             target_kg=tkg,
             max_humedad=float(max_humedad) if max_humedad else None,
-            temporada=temporada, product_type=product_type, notes=notes,
+            temporada=temporada, product_type=product_type,
+            fruit_quality=fruit_quality, notes=notes,
         )
         db.session.add(line)
         db.session.commit()
@@ -1197,16 +1204,19 @@ def create_app():
 
     @app.route('/reset', methods=['POST'])
     def reset_inventory():
-        from models import Bin, Allocation
+        from models import Bin, Order, OrderLine, Allocation, Excedente
 
         if request.form.get('passcode') != '001083748':
             flash('Código incorrecto.', 'err')
             return redirect(url_for('index'))
 
-        Allocation.query.filter(Allocation.bin_id.isnot(None)).delete(synchronize_session=False)
+        Allocation.query.delete(synchronize_session=False)
+        Excedente.query.delete(synchronize_session=False)
+        OrderLine.query.delete(synchronize_session=False)
+        Order.query.delete(synchronize_session=False)
         Bin.query.delete(synchronize_session=False)
         db.session.commit()
-        flash('Inventario reseteado — todos los bins han sido eliminados.', 'ok')
+        flash('Reset completo — bins, órdenes y asignaciones eliminados.', 'ok')
         return redirect(url_for('index'))
 
     @app.route('/orders/<int:order_id>/delete', methods=['POST'])
@@ -1553,6 +1563,87 @@ def create_app():
                         'errors': errors,
                         'orders': results})
 
+    # ── Rendimientos ──────────────────────────────────────────────────────────
+
+    @app.route('/rendimientos')
+    def rendimientos():
+        from models import YieldOverride, _YIELD_TABLE, _FLAT_YIELD
+
+        ROWS_DEF = [
+            ('TSC',    'tsc',     [35, 45, 55, 65, 75, 85, 95, 110, 132]),
+            ('SS',     'ss',      [35, 45, 55, 65, 75, 85, 95]),
+            ('TCC',    'tcc',     [35, 45, 55, 65, 75, 85, 95, 110, 132]),
+            ('Elliot', 'elliot',  [95, 110, 132]),
+            ('CN',     'natural', [35, 45, 55, 65, 75, 85, 90, 95, 110, 132, 157]),
+        ]
+
+        overrides = {
+            (o.tipo, o.caliber_num): o
+            for o in YieldOverride.query.all()
+        }
+
+        rows = []
+        for tipo_label, yield_tipo, calibers in ROWS_DEF:
+            for cal_num in calibers:
+                ov = overrides.get((yield_tipo, cal_num))
+                base = _YIELD_TABLE.get((yield_tipo, cal_num), _FLAT_YIELD.get(yield_tipo, 0))
+                rend = ov.rend_teorico if ov else base
+                rows.append({
+                    'tipo_label':  tipo_label,
+                    'yield_tipo':  yield_tipo,
+                    'caliber_num': cal_num,
+                    'rend_teorico': rend,
+                    'comentario':  (ov.comentario or '') if ov else '',
+                    'row_id':      f'{yield_tipo}_{cal_num}',
+                })
+
+        return render_template('rendimientos.html', rows=rows)
+
+    @app.route('/rendimientos/check', methods=['POST'])
+    def rendimientos_check():
+        from flask import jsonify
+        data = request.get_json(force=True, silent=True) or {}
+        return jsonify({'ok': data.get('passcode') == '001083748'})
+
+    @app.route('/rendimientos/save', methods=['POST'])
+    def rendimientos_save():
+        from models import YieldOverride, load_yield_overrides
+
+        if request.form.get('passcode') != '001083748':
+            flash('Contraseña incorrecta.', 'err')
+            return redirect(url_for('rendimientos'))
+
+        SAVE_DEFS = [
+            ('tsc',     [35, 45, 55, 65, 75, 85, 95, 110, 132]),
+            ('ss',      [35, 45, 55, 65, 75, 85, 95]),
+            ('tcc',     [35, 45, 55, 65, 75, 85, 95, 110, 132]),
+            ('elliot',  [95, 110, 132]),
+            ('natural', [35, 45, 55, 65, 75, 85, 90, 95, 110, 132, 157]),
+        ]
+
+        for yield_tipo, calibers in SAVE_DEFS:
+            for cal in calibers:
+                rend_str = request.form.get(f'rend_{yield_tipo}_{cal}', '').strip()
+                com = request.form.get(f'com_{yield_tipo}_{cal}', '').strip() or None
+                try:
+                    rend = float(rend_str)
+                except (ValueError, TypeError):
+                    continue
+                ov = YieldOverride.query.filter_by(tipo=yield_tipo, caliber_num=cal).first()
+                if ov:
+                    ov.rend_teorico = rend
+                    ov.comentario   = com
+                else:
+                    db.session.add(YieldOverride(
+                        tipo=yield_tipo, caliber_num=cal,
+                        rend_teorico=rend, comentario=com,
+                    ))
+
+        db.session.commit()
+        load_yield_overrides()
+        flash('Rendimientos actualizados.', 'ok')
+        return redirect(url_for('rendimientos'))
+
     return app
 
 
@@ -1586,6 +1677,8 @@ def _migrate(db_obj):
         'ALTER TABLE order_lines ADD COLUMN IF NOT EXISTS product_type VARCHAR(20)',
         # track which source bin each excedente came from
         'ALTER TABLE excedentes ADD COLUMN IF NOT EXISTS source_bin_tarja VARCHAR(50)',
+        # fruit quality tier on order lines
+        'ALTER TABLE order_lines ADD COLUMN IF NOT EXISTS fruit_quality VARCHAR(20)',
     ]
     with db_obj.engine.connect() as conn:
         for sql in stmts:

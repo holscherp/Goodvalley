@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% block title %}Rendimientos · Goodvalley{% endblock %}
+
+{% block content %}
+<div class="row-between" style="margin-bottom:10px">
+  <div>
+    <h1>Rendimientos de Proceso</h1>
+    <p class="muted">Rend. Teórico es editable con contraseña. Rend. Usado alimenta el cálculo de MP Comprometida en órdenes.</p>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <button class="btn btn-primary" id="edit-btn">Editar</button>
+    <div id="pw-section" style="display:none;align-items:center;gap:8px;flex-wrap:wrap">
+      <input type="password" id="pw-field" placeholder="Contraseña"
+             style="padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;font-family:inherit;width:160px">
+      <button class="btn btn-primary" id="unlock-btn" type="button">Desbloquear</button>
+      <span id="pw-error" style="display:none;color:var(--danger);font-size:13px;font-weight:600">Contraseña incorrecta</span>
+    </div>
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('rendimientos_save') }}" id="rend-form">
+  <input type="hidden" name="passcode" id="hidden-passcode">
+
+  <div id="save-top" style="display:none;margin:0 0 10px">
+    <button class="btn btn-primary" type="submit">Guardar cambios</button>
+  </div>
+
+  <table class="grid tight">
+    <thead><tr>
+      <th>Tipo</th>
+      <th class="num">Calibre (num)</th>
+      <th class="num">Kg PT real</th>
+      <th class="num">Kg MP entrada</th>
+      <th class="num">Rend. Real</th>
+      <th class="num rend-teorico-th">Rend. Teórico</th>
+      <th class="num">Rend. Usado</th>
+      <th>Comentario</th>
+    </tr></thead>
+    <tbody>
+    {% for row in rows %}
+    <tr>
+      <td><strong>{{ row.tipo_label }}</strong></td>
+      <td class="num">{{ row.caliber_num }}</td>
+      <td class="num muted">—</td>
+      <td class="num muted">—</td>
+      <td class="num muted">—</td>
+      <td class="num rend-teorico-cell">
+        <input type="number"
+               name="rend_{{ row.yield_tipo }}_{{ row.caliber_num }}"
+               value="{{ '%.3f'|format(row.rend_teorico) }}"
+               step="0.001" min="0" max="3"
+               class="yield-input"
+               style="width:72px;text-align:right"
+               data-row="{{ row.row_id }}"
+               disabled>
+      </td>
+      <td class="num" id="usado_{{ row.row_id }}">{{ '%.3f'|format(row.rend_teorico) }}</td>
+      <td>
+        <input type="text"
+               name="com_{{ row.yield_tipo }}_{{ row.caliber_num }}"
+               value="{{ row.comentario }}"
+               class="yield-input"
+               style="width:200px"
+               placeholder="—"
+               disabled>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  <div id="save-bottom" style="display:none;margin:10px 0">
+    <button class="btn btn-primary" type="submit">Guardar cambios</button>
+  </div>
+</form>
+
+<script>
+(function () {
+  var editBtn   = document.getElementById('edit-btn');
+  var pwSection = document.getElementById('pw-section');
+  var pwField   = document.getElementById('pw-field');
+  var unlockBtn = document.getElementById('unlock-btn');
+  var pwError   = document.getElementById('pw-error');
+  var saveTop   = document.getElementById('save-top');
+  var saveBot   = document.getElementById('save-bottom');
+  var hiddenPw  = document.getElementById('hidden-passcode');
+
+  editBtn.addEventListener('click', function () {
+    pwSection.style.display = 'flex';
+    editBtn.style.display   = 'none';
+    pwField.focus();
+  });
+
+  function tryUnlock() {
+    var pw = pwField.value;
+    fetch('{{ url_for("rendimientos_check") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passcode: pw })
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d.ok) {
+        pwSection.style.display = 'none';
+        document.querySelectorAll('.yield-input').forEach(function (el) {
+          el.disabled = false;
+        });
+        saveTop.style.display = 'block';
+        saveBot.style.display = 'block';
+        hiddenPw.value = pw;
+
+        document.querySelectorAll('input[data-row]').forEach(function (el) {
+          el.addEventListener('input', function () {
+            var used = document.getElementById('usado_' + this.dataset.row);
+            if (used) used.textContent = (parseFloat(this.value) || 0).toFixed(3);
+          });
+        });
+      } else {
+        pwError.style.display = 'inline';
+        setTimeout(function () { pwError.style.display = 'none'; }, 3000);
+      }
+    })
+    .catch(function () {
+      pwError.style.display = 'inline';
+      setTimeout(function () { pwError.style.display = 'none'; }, 3000);
+    });
+  }
+
+  unlockBtn.addEventListener('click', tryUnlock);
+  pwField.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); tryUnlock(); }
+  });
+})();
+</script>
+{% endblock %}
