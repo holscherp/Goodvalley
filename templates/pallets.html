@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% block title %}Pallets en Bodega · Goodvalley{% endblock %}
+
+{% block content %}
+<div class="row-between">
+  <div>
+    <h1>Pallets en Bodega</h1>
+    <p class="muted">
+      Producto terminado disponible. Se actualiza con Sync Completo.
+      {% if last_sync %}· última sync {{ last_sync.strftime('%d-%m-%Y %H:%M') }}{% endif %}
+    </p>
+  </div>
+  <div class="cards" style="margin:0;gap:10px">
+    <div class="card" style="min-width:0;padding:12px 18px">
+      <div class="big">{{ pallets|length }}</div>
+      <div class="lbl">Pallets</div>
+    </div>
+    <div class="card" style="min-width:0;padding:12px 18px">
+      <div class="big">{{ "{:,.0f}".format(pallets|sum(attribute='weight_kg') or 0) }}</div>
+      <div class="lbl">kg totales</div>
+    </div>
+  </div>
+</div>
+
+{% if pallets %}
+<table class="grid tight">
+  <thead><tr>
+    <th>Tarja</th>
+    <th>OT</th>
+    <th>Cliente</th>
+    <th>Producto</th>
+    <th>Calibre</th>
+    <th>Secado</th>
+    <th>Tipo</th>
+    <th>Temporada</th>
+    <th class="num">kg</th>
+    <th class="num">Bins origen</th>
+  </tr></thead>
+  <tbody>
+  {% for p in pallets %}
+  <tr>
+    <td class="mono">{{ p.tarja }}</td>
+    <td class="mono">{{ p.ot or '—' }}</td>
+    <td>{{ p.customer or '—' }}</td>
+    <td>{{ p.producto or '—' }}</td>
+    <td>{{ p.caliber or '—' }}</td>
+    <td>
+      {% if p.drying %}
+        <span class="pill pill-{{ p.drying }}">{{ p.drying_label }}</span>
+      {% else %}—{% endif %}
+    </td>
+    <td>{{ p.product_type_label if p.product_type else '—' }}</td>
+    <td>{{ p.temporada or '—' }}</td>
+    <td class="num">{{ "{:,.1f}".format(p.weight_kg or 0) }}</td>
+    <td class="num">{{ p.bin_count if p.bin_count else '—' }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">
+  <p>No hay pallets registrados todavía.</p>
+  <p class="muted" style="margin-top:6px">Presioná <strong>Actualizar → Sync Completo</strong> para traer los datos desde pWarehouse.</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -21,41 +21,43 @@
        class="{{ 'on' if request.endpoint and 'bin' in request.endpoint else '' }}">Inventario de Bins</a>
     <a href="{{ url_for('list_orders') }}"
        class="{{ 'on' if request.endpoint and 'order' in request.endpoint else '' }}">Órdenes de Venta</a>
+    <a href="{{ url_for('list_procesos') }}"
+       class="{{ 'on' if request.endpoint == 'list_procesos' else '' }}">Procesos</a>
+    <a href="{{ url_for('list_pallets') }}"
+       class="{{ 'on' if request.endpoint == 'list_pallets' else '' }}">Pallets en Bodega</a>
     <a href="{{ url_for('rendimientos') }}"
        class="{{ 'on' if request.endpoint and 'rendimiento' in request.endpoint else '' }}">Rendimientos</a>
   </nav>
   <div class="topbar-actions">
-    <button class="btn btn-pw" id="sync-full-btn"
-            onclick="gvSyncFullPopup()"
-            title="Sync completo: Bins + Pallets + Procesos desde pWarehouse8">
-      Sync Completo
-    </button>
-    <button class="btn btn-pw" id="sync-pw-btn"
-            onclick="gvSyncPopup()"
-            title="Importar solo los bins desde pWarehouse8">
-      Sync Bins
-    </button>
-    <form action="{{ url_for('sync_upload') }}" method="post"
-          enctype="multipart/form-data" class="sync-form">
-      <label class="btn btn-sync" title="Subir bins.json manualmente">
-        Subir JSON
-        <input type="file" name="bins_file" accept=".json" style="display:none"
-               onchange="this.form.submit()">
-      </label>
-    </form>
+    <div class="act-dropdown" id="act-dd">
+      <button class="btn btn-pw act-toggle" type="button" id="act-toggle">Actualizar ▾</button>
+      <div class="act-menu" id="act-menu">
+        <button class="act-item" type="button" onclick="gvSyncFullPopup();document.getElementById('act-dd').classList.remove('open')">
+          Sync Completo
+        </button>
+        <form action="{{ url_for('sync_upload') }}" method="post" enctype="multipart/form-data" style="margin:0">
+          <label class="act-item act-upload" title="Subir bins.json manualmente">
+            Subir JSON
+            <input type="file" name="bins_file" accept=".json" style="display:none"
+                   onchange="this.form.submit()">
+          </label>
+        </form>
+      </div>
+    </div>
   </div>
 </header>
 <script>
-function gvSyncPopup() {
-  const w = 580, h = 420;
-  const left = Math.round(screen.width  / 2 - w / 2);
-  const top  = Math.round(screen.height / 2 - h / 2);
-  window.open(
-    '/sync-popup',
-    'gv_sync',
-    `width=${w},height=${h},left=${left},top=${top},toolbar=no,location=no,menubar=no,status=no`
-  );
-}
+(function () {
+  var dd     = document.getElementById('act-dd');
+  var toggle = document.getElementById('act-toggle');
+  toggle.addEventListener('click', function (e) {
+    e.stopPropagation();
+    dd.classList.toggle('open');
+  });
+  document.addEventListener('click', function (e) {
+    if (!dd.contains(e.target)) dd.classList.remove('open');
+  });
+})();
 function gvSyncFullPopup() {
   const w = 580, h = 420;
   const left = Math.round(screen.width  / 2 - w / 2);

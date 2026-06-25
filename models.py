@@ -328,3 +328,57 @@ class Allocation(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (db.UniqueConstraint('bin_id', name='uq_alloc_bin_id'),)
+
+
+class Proceso(db.Model):
+    __tablename__ = 'procesos'
+
+    id          = db.Column(db.Integer, primary_key=True)
+    ot          = db.Column(db.String(50),  nullable=False)
+    tipoproceso = db.Column(db.String(50),  nullable=True)
+    drying      = db.Column(db.String(30),  nullable=True)
+    temporada   = db.Column(db.String(10),  nullable=True)
+    neto_egreso = db.Column(db.Float,       nullable=True)
+    serie       = db.Column(db.String(50),  nullable=True)
+    synced_at   = db.Column(db.DateTime,    default=datetime.utcnow)
+
+    @property
+    def drying_label(self):
+        return DRYING_LABELS.get(self.drying, self.drying or '—')
+
+
+class Pallet(db.Model):
+    __tablename__ = 'pallets'
+
+    id           = db.Column(db.Integer, primary_key=True)
+    tarja        = db.Column(db.String(50),  unique=True, nullable=False)
+    ot           = db.Column(db.String(50),  nullable=True)
+    customer     = db.Column(db.String(200), nullable=True)
+    caliber      = db.Column(db.String(20),  nullable=True)
+    drying       = db.Column(db.String(30),  nullable=True)
+    product_type = db.Column(db.String(20),  nullable=True)
+    weight_kg    = db.Column(db.Float,       nullable=True)
+    producto     = db.Column(db.String(200), nullable=True)
+    temporada    = db.Column(db.String(10),  nullable=True)
+    bin_ids_json = db.Column(db.Text,        nullable=True)
+    synced_at    = db.Column(db.DateTime,    default=datetime.utcnow)
+
+    @property
+    def bin_identifiers(self):
+        import json as _j
+        try:
+            return _j.loads(self.bin_ids_json or '[]')
+        except Exception:
+            return []
+
+    @property
+    def bin_count(self):
+        return len(self.bin_identifiers)
+
+    @property
+    def drying_label(self):
+        return DRYING_LABELS.get(self.drying, self.drying or '—')
+
+    @property
+    def product_type_label(self):
+        return PRODUCT_TYPE_LABELS.get(self.product_type, self.product_type or '—')

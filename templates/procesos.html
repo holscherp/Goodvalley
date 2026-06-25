@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}Procesos · Goodvalley{% endblock %}
+
+{% block content %}
+<div class="row-between">
+  <div>
+    <h1>Informe Procesos</h1>
+    <p class="muted">
+      OTs procesadas en planta. Se actualiza con Sync Completo.
+      {% if last_sync %}· última sync {{ last_sync.strftime('%d-%m-%Y %H:%M') }}{% endif %}
+    </p>
+  </div>
+  <div class="cards" style="margin:0">
+    <div class="card" style="min-width:0;padding:12px 18px">
+      <div class="big">{{ procesos|length }}</div>
+      <div class="lbl">OTs registradas</div>
+    </div>
+  </div>
+</div>
+
+{% if procesos %}
+<table class="grid tight">
+  <thead><tr>
+    <th>OT</th>
+    <th>Tipo Proceso</th>
+    <th>Secado</th>
+    <th>Temporada</th>
+    <th class="num">Neto Egreso (kg)</th>
+    <th>Serie / Calibre Ingreso</th>
+  </tr></thead>
+  <tbody>
+  {% for p in procesos %}
+  <tr>
+    <td class="mono">{{ p.ot }}</td>
+    <td>{{ p.tipoproceso or '—' }}</td>
+    <td>
+      {% if p.drying %}
+        <span class="pill pill-{{ p.drying }}">{{ p.drying_label }}</span>
+      {% else %}—{% endif %}
+    </td>
+    <td>{{ p.temporada or '—' }}</td>
+    <td class="num">{{ "{:,.1f}".format(p.neto_egreso) if p.neto_egreso else '—' }}</td>
+    <td class="mono">{{ p.serie or '—' }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">
+  <p>No hay datos de procesos todavía.</p>
+  <p class="muted" style="margin-top:6px">Presioná <strong>Actualizar → Sync Completo</strong> para traer los datos desde pWarehouse.</p>
+</div>
+{% endif %}
+{% endblock %}

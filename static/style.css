@@ -80,6 +80,24 @@ h4 { font-size: 14px; margin: .2em 0 }
 .btn-pw { background: #5b1a8a; color: #fff }
 .btn-pw:hover { background: #7b2fbe }
 
+/* ── Actualizar dropdown ── */
+.act-dropdown { position: relative }
+.act-menu {
+  display: none; position: absolute; right: 0; top: calc(100% + 6px);
+  background: var(--purple-d); border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0,0,0,.45);
+  min-width: 170px; z-index: 20; overflow: hidden;
+}
+.act-dropdown.open .act-menu { display: block }
+.act-item {
+  display: block; width: 100%; padding: 11px 16px;
+  color: #d4b4ea; font-size: 13px; font-weight: 500;
+  background: none; border: none; text-align: left; cursor: pointer;
+  font-family: inherit; text-decoration: none;
+}
+.act-item:hover { background: rgba(255,255,255,.10); color: #fff }
+.act-item + .act-item { border-top: 1px solid rgba(255,255,255,.08) }
+
 /* ── Buttons ── */
 .btn {
   display: inline-block;

@@ -134,7 +134,7 @@ def create_app():
     db.init_app(app)
 
     with app.app_context():
-        from models import Bin, Order, OrderLine, Allocation, Excedente, YieldOverride  # noqa: F401
+        from models import Bin, Order, OrderLine, Allocation, Excedente, YieldOverride, Proceso, Pallet  # noqa: F401
         db.create_all()
 
         _migrate(db)
@@ -578,6 +578,79 @@ def create_app():
                 except Exception as e:
                     with open(log_path, 'a') as lf:
                         lf.write(f'✗ Error importando pallets: {e}\n')
+                        lf.flush()
+
+            # ── Import procesos to Proceso table ──────────────────────────
+            if procesos_path.exists():
+                try:
+                    proc_data = _json.loads(procesos_path.read_text())
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'► Importando {len(proc_data)} procesos...\n')
+                        lf.flush()
+                    with _app.app_context():
+                        from models import Proceso
+                        Proceso.query.delete(synchronize_session=False)
+                        for p in proc_data:
+                            if not p.get('ot'):
+                                continue
+                            db.session.add(Proceso(
+                                ot=p['ot'],
+                                tipoproceso=p.get('tipoproceso'),
+                                drying=p.get('drying'),
+                                temporada=p.get('temporada'),
+                                neto_egreso=p.get('neto_egreso'),
+                                serie=p.get('serie'),
+                                synced_at=datetime.utcnow(),
+                            ))
+                        db.session.commit()
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'✓ Procesos: {len(proc_data)} OTs importados.\n')
+                        lf.flush()
+                except Exception as e:
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'✗ Error importando procesos: {e}\n')
+                        lf.flush()
+
+            # ── Import pallets to Pallet table ────────────────────────────
+            if pallets_path.exists():
+                try:
+                    pallets_raw = _json.loads(pallets_path.read_text())
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'► Importando {len(pallets_raw)} pallets a tabla Pallet...\n')
+                        lf.flush()
+                    with _app.app_context():
+                        from models import Pallet
+                        import json as _pj
+                        existing_tarjas = {
+                            row[0] for row in db.session.query(Pallet.tarja).all()
+                        }
+                        p_added = 0
+                        for p in pallets_raw:
+                            tarja = str(p.get('tarja') or '').strip()
+                            if not tarja or tarja in existing_tarjas:
+                                continue
+                            db.session.add(Pallet(
+                                tarja=tarja,
+                                ot=p.get('ot'),
+                                customer=p.get('customer'),
+                                caliber=p.get('caliber'),
+                                drying=p.get('drying'),
+                                product_type=p.get('product_type'),
+                                weight_kg=float(p.get('weight_kg') or 0),
+                                producto=p.get('producto'),
+                                temporada=p.get('temporada'),
+                                bin_ids_json=_pj.dumps(p.get('bin_identifiers', [])),
+                                synced_at=datetime.utcnow(),
+                            ))
+                            existing_tarjas.add(tarja)
+                            p_added += 1
+                        db.session.commit()
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'✓ Pallets tabla: {p_added} nuevos.\n')
+                        lf.flush()
+                except Exception as e:
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'✗ Error importando pallets tabla: {e}\n')
                         lf.flush()
 
             status_path.write_text('done:0')
@@ -1562,6 +1635,22 @@ def create_app():
                         'skipped': len([r for r in results if r.get('skipped')]),
                         'errors': errors,
                         'orders': results})
+
+    # ── Procesos & Pallets ────────────────────────────────────────────────────
+
+    @app.route('/procesos')
+    def list_procesos():
+        from models import Proceso
+        procesos  = Proceso.query.order_by(Proceso.ot).all()
+        last_sync = procesos[0].synced_at if procesos else None
+        return render_template('procesos.html', procesos=procesos, last_sync=last_sync)
+
+    @app.route('/pallets')
+    def list_pallets():
+        from models import Pallet
+        pallets   = Pallet.query.order_by(Pallet.tarja).all()
+        last_sync = pallets[0].synced_at if pallets else None
+        return render_template('pallets.html', pallets=pallets, last_sync=last_sync)
 
     # ── Rendimientos ──────────────────────────────────────────────────────────
 
