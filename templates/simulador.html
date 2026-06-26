@@ -1,0 +1,431 @@
+{% extends 'base.html' %}
+{% block title %}Simulador · Goodvalley{% endblock %}
+
+{% block content %}
+<style>
+.sim-wrap       { display:flex; flex-direction:column; gap:16px }
+.sim-header     { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px }
+.sim-controls   { display:flex; gap:8px }
+.sim-speed      { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted) }
+.sim-speed input{ width:80px }
+
+.sim-stages     { display:grid; grid-template-columns:repeat(4,1fr); gap:12px }
+.stage          { background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+                  box-shadow:var(--shadow); display:flex; flex-direction:column; overflow:hidden }
+.stage-head     { background:var(--lavender-l); padding:10px 14px; border-bottom:1px solid var(--line) }
+.stage-title    { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--purple) }
+.stage-counter  { font-size:22px; font-weight:700; color:var(--purple); margin-top:2px }
+.stage-sub      { font-size:11px; color:var(--muted); margin-top:1px }
+.stage-list     { flex:1; overflow-y:auto; max-height:340px; padding:6px 0 }
+.stage-item     { padding:5px 14px; font-size:12px; border-bottom:1px solid var(--line); display:flex;
+                  justify-content:space-between; gap:8px; align-items:center }
+.stage-item:last-child { border-bottom:0 }
+.stage-item.new { animation: fadeIn .4s ease }
+@keyframes fadeIn { from{background:var(--lavender)} to{background:transparent} }
+.si-id   { font-family:ui-monospace,monospace; font-size:11px; color:var(--purple) }
+.si-meta { color:var(--muted); font-size:11px; text-align:right }
+.si-pill { display:inline-block; padding:1px 6px; border-radius:10px; font-size:10px; font-weight:700 }
+.si-horno        { background:#fde4cf; color:#9a4b00 }
+.si-cancha       { background:var(--green-bg); color:#2e6b18 }
+.si-termino      { background:var(--lavender); color:var(--purple) }
+.si-fulfilled    { background:var(--green-bg); color:#2e6b18 }
+.si-partial      { background:var(--warn-bg); color:var(--warn) }
+
+.sim-log        { background:var(--ink); border-radius:var(--radius); padding:10px 14px;
+                  font-family:ui-monospace,monospace; font-size:11.5px; line-height:1.7;
+                  color:#a0e0a0; max-height:140px; overflow-y:auto }
+.log-ts  { color:#6a8a6a }
+.log-ot  { color:#c8a0e8 }
+.log-num { color:#ffe080 }
+
+.sim-idle { text-align:center; color:var(--muted); padding:40px 0; font-size:13px }
+</style>
+
+<div class="sim-wrap">
+  <div class="sim-header">
+    <div>
+      <h1>Simulador de Trazabilidad</h1>
+      <p class="muted">Demo del flujo Bins → Proceso → Pallets → Órdenes. Sin conexión a base de datos.</p>
+    </div>
+    <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+      <div class="sim-speed">
+        <span>Velocidad</span>
+        <input type="range" id="speedSlider" min="1" max="5" value="3">
+        <span id="speedLabel">Normal</span>
+      </div>
+      <div class="sim-controls">
+        <button class="btn btn-sync" id="btnStart" onclick="simStart()">▶ Iniciar</button>
+        <button class="btn btn-ghost" id="btnStop" onclick="simStop()" disabled>⏸ Detener</button>
+        <button class="btn btn-danger" id="btnReset" onclick="simReset()">↺ Resetear</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sim-stages">
+    <div class="stage">
+      <div class="stage-head">
+        <div class="stage-title">① Bins en Bodega</div>
+        <div class="stage-counter" id="cnt-bins">—</div>
+        <div class="stage-sub" id="sub-bins">bins disponibles</div>
+      </div>
+      <div class="stage-list" id="list-bins"><div class="sim-idle">Presioná Iniciar para comenzar</div></div>
+    </div>
+    <div class="stage">
+      <div class="stage-head">
+        <div class="stage-title">② En Proceso (OT)</div>
+        <div class="stage-counter" id="cnt-ots">—</div>
+        <div class="stage-sub" id="sub-ots">OTs activas</div>
+      </div>
+      <div class="stage-list" id="list-ots"><div class="sim-idle"></div></div>
+    </div>
+    <div class="stage">
+      <div class="stage-head">
+        <div class="stage-title">③ Pallets Terminados</div>
+        <div class="stage-counter" id="cnt-pallets">—</div>
+        <div class="stage-sub" id="sub-pallets">pallets disponibles</div>
+      </div>
+      <div class="stage-list" id="list-pallets"><div class="sim-idle"></div></div>
+    </div>
+    <div class="stage">
+      <div class="stage-head">
+        <div class="stage-title">④ Órdenes de Venta</div>
+        <div class="stage-counter" id="cnt-orders">—</div>
+        <div class="stage-sub" id="sub-orders">órdenes cumplidas</div>
+      </div>
+      <div class="stage-list" id="list-orders"><div class="sim-idle"></div></div>
+    </div>
+  </div>
+
+  <div class="sim-log" id="simLog"><span style="color:#6a8a6a">— esperando inicio —</span></div>
+</div>
+
+<script>
+(function () {
+// ── Seeded PRNG (Mulberry32) ─────────────────────────────────────────────────
+function rng(seed) {
+  var s = seed >>> 0;
+  return function () {
+    s += 0x6D2B79F5;
+    var t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+var rand = rng(20260101);
+function ri(min, max) { return Math.floor(rand() * (max - min + 1)) + min; }
+function pick(arr)    { return arr[Math.floor(rand() * arr.length)]; }
+
+// ── Constants ────────────────────────────────────────────────────────────────
+var CALIBERS   = ['30/40','40/50','50/60','60/70','70/80','80/90','90/100','100/120','120/144','144/170','170+'];
+var DRYINGS    = ['horno','horno','horno','cancha','termino_secado'];
+var PRODUCERS  = [
+  'FRUTALES INTERIORES SA','AGRICOLA MAI LTDA','HERNAN DONOSO',
+  'VINA SIEGEL SA','AGRICOLA SANTA PAULA','PACKING MERQUEN SPA',
+  'SOC. COMERCIAL EZQUERRA LTDA','QUILLAY FRUT INTERIORES',
+  'AGRICOLA SODIA LTDA','MARIA DIAZ ESCANDON'
+];
+var TIPOS      = ['cn','cn','tsc','tsc','tcc','ss','elliot'];
+var TIPO_LABEL = {cn:'Condición Natural',tsc:'TSC',tcc:'TCC',ss:'SS',elliot:'Elliot'};
+var CLIENTS    = ['FIRST GRADE','BEIJING ZHENWEIFANG','STONE WEST','GOODVALLEY EXPORT','ASIA FRUITS CO.','PLUM PACIFIC LTD'];
+
+// Yield rates (approximate, matches _YIELD_TABLE in models.py)
+var YIELDS = {
+  tsc:    {30:0.64,40:0.66,50:0.69,60:0.72,70:0.75,80:0.78,90:0.81,100:0.78,120:0.72},
+  ss:     {30:0.61,40:0.63,50:0.65,60:0.68,70:0.71,80:0.74,90:0.77,100:0.74,120:0.68},
+  tcc:    {30:0.58,40:0.61,50:0.64,60:0.67,70:0.71,80:0.74,90:0.77,100:0.74,120:0.67},
+  elliot: {90:0.69,100:0.66,120:0.60},
+  cn:     {30:0.52,40:0.54,50:0.56,60:0.59,70:0.62,80:0.65,90:0.59,95:0.59,100:0.57,110:0.54,157:0.50}
+};
+function getYield(tipo, calStr) {
+  var n = parseInt(calStr.split('/')[0]) || parseInt(calStr) || 80;
+  var tbl = YIELDS[tipo] || YIELDS.cn;
+  if (tbl[n]) return tbl[n];
+  var keys = Object.keys(tbl).map(Number).sort(function(a,b){return a-b;});
+  for (var i=0; i<keys.length; i++) if (keys[i] >= n) return tbl[keys[i]];
+  return tbl[keys[keys.length-1]];
+}
+
+// ── ID generators ────────────────────────────────────────────────────────────
+var binCounter    = 180000;
+var palletCounter = 303000;
+var otCounter     = 6002300;
+
+function nextBinTarja()    { return '2501' + (binCounter++); }
+function nextPalletTarja() { return '2601' + (palletCounter++); }
+function nextOT()          { return '' + (otCounter++); }
+
+// ── State ────────────────────────────────────────────────────────────────────
+var bins    = [];   // {tarja, producer, caliber, drying, weight_kg}
+var ots     = [];   // {ot, tipo, caliber, bins[], state:'active'|'done', neto_egreso}
+var pallets = [];   // {tarja, ot, caliber, weight_kg, allocated:false}
+var orders  = [];   // {id, client, caliber, target_kg, allocated_kg, fulfilled}
+
+var tickInterval = null;
+var tickCount    = 0;
+
+// ── Build initial data ───────────────────────────────────────────────────────
+function buildData() {
+  rand = rng(20260101);
+  binCounter    = 180000;
+  palletCounter = 303000;
+  otCounter     = 6002300;
+  bins = []; ots = []; pallets = []; orders = [];
+  tickCount = 0;
+
+  for (var i = 0; i < 800; i++) {
+    bins.push({
+      tarja:    nextBinTarja(),
+      producer: pick(PRODUCERS),
+      caliber:  pick(CALIBERS),
+      drying:   pick(DRYINGS),
+      weight_kg: ri(260, 580)
+    });
+  }
+
+  var targetCalibers = ['50/60','60/70','70/80','80/90','90/100','100/120','120/144'];
+  for (var j = 0; j < 8; j++) {
+    orders.push({
+      id:           j + 1,
+      client:       pick(CLIENTS),
+      caliber:      pick(targetCalibers),
+      target_kg:    ri(8000, 20000),
+      allocated_kg: 0,
+      fulfilled:    false
+    });
+  }
+}
+
+// ── Tick logic ───────────────────────────────────────────────────────────────
+function tick() {
+  tickCount++;
+
+  // Every ~3 ticks: start a new OT from available bins
+  if (tickCount % 3 === 1) {
+    var available = bins.filter(function(b){ return !b._used; });
+    if (available.length >= 10) {
+      var batchSize = ri(10, 30);
+      var tipo      = pick(TIPOS);
+      var batch     = [];
+      var caliberForOT = pick(CALIBERS);
+      for (var i = 0; i < available.length && batch.length < batchSize; i++) {
+        if (!available[i]._used) {
+          available[i]._used = true;
+          batch.push(available[i]);
+        }
+      }
+      if (batch.length) {
+        var ot = {
+          ot:      nextOT(),
+          tipo:    tipo,
+          caliber: caliberForOT,
+          bins:    batch,
+          state:   'active',
+          ticksLeft: ri(2, 5),
+          neto_egreso: 0
+        };
+        ots.push(ot);
+        logEvent('OT <span class="log-ot">' + ot.ot + '</span> iniciada — ' +
+          '<span class="log-num">' + batch.length + '</span> bins · ' + TIPO_LABEL[tipo]);
+      }
+    }
+  }
+
+  // Advance active OTs
+  ots.forEach(function(ot) {
+    if (ot.state !== 'active') return;
+    ot.ticksLeft--;
+    if (ot.ticksLeft <= 0) {
+      ot.state = 'done';
+      var totalIn = ot.bins.reduce(function(s,b){ return s + b.weight_kg; }, 0);
+      var yr      = getYield(ot.tipo, ot.caliber);
+      var neto    = Math.round(totalIn * yr);
+      ot.neto_egreso = neto;
+
+      // Create pallets (~7.5 kg/unit, grouped ~750 kg per pallet)
+      var remaining = neto;
+      while (remaining > 100) {
+        var palletKg = Math.min(ri(700, 825), remaining);
+        pallets.push({
+          tarja:     nextPalletTarja(),
+          ot:        ot.ot,
+          caliber:   ot.caliber,
+          weight_kg: palletKg,
+          allocated: false
+        });
+        remaining -= palletKg;
+      }
+      logEvent('OT <span class="log-ot">' + ot.ot + '</span> completada → ' +
+        '<span class="log-num">' + neto.toLocaleString('es-CL') + ' kg</span> neto · ' +
+        ot.caliber + ' · ' + TIPO_LABEL[ot.tipo]);
+    }
+  });
+
+  // Allocate available pallets to open orders
+  var freePallets = pallets.filter(function(p){ return !p.allocated; });
+  freePallets.forEach(function(p) {
+    if (p.allocated) return;
+    var order = orders.find(function(o){
+      return !o.fulfilled && o.caliber === p.caliber;
+    });
+    if (!order) {
+      // fallback: any open order
+      order = orders.find(function(o){ return !o.fulfilled; });
+    }
+    if (order) {
+      p.allocated = true;
+      p._orderId  = order.id;
+      order.allocated_kg += p.weight_kg;
+      if (order.allocated_kg >= order.target_kg) {
+        order.fulfilled = true;
+        logEvent('Orden <span class="log-ot">#' + order.id + '</span> — ' +
+          order.client + ' — <span class="log-num">CUMPLIDA</span> (' +
+          order.allocated_kg.toLocaleString('es-CL') + ' kg)');
+      }
+    }
+  });
+
+  renderAll();
+
+  // Stop when all orders fulfilled or no bins left and no active OTs
+  var allFulfilled = orders.every(function(o){ return o.fulfilled; });
+  var noWork = bins.every(function(b){ return b._used; }) &&
+               ots.every(function(o){ return o.state === 'done'; }) &&
+               pallets.every(function(p){ return p.allocated; });
+  if (allFulfilled || noWork) {
+    simStop();
+    logEvent('<span style="color:#ffe080">▶ Simulación completada</span>');
+  }
+}
+
+// ── Render ───────────────────────────────────────────────────────────────────
+function dryingPill(d) {
+  var cls = d === 'horno' ? 'si-horno' : d === 'cancha' ? 'si-cancha' : 'si-termino';
+  var lbl = d === 'horno' ? 'Horno' : d === 'cancha' ? 'Cancha' : 'Término';
+  return '<span class="si-pill ' + cls + '">' + lbl + '</span>';
+}
+
+function renderAll() {
+  var availBins = bins.filter(function(b){ return !b._used; });
+  var activeOTs = ots.filter(function(o){ return o.state === 'active'; });
+  var doneOTs   = ots.filter(function(o){ return o.state === 'done'; });
+  var freePal   = pallets.filter(function(p){ return !p.allocated; });
+  var fulfilledO = orders.filter(function(o){ return o.fulfilled; });
+
+  // Bins
+  document.getElementById('cnt-bins').textContent = availBins.length;
+  document.getElementById('sub-bins').textContent = 'bins disponibles · ' +
+    availBins.reduce(function(s,b){return s+b.weight_kg;},0).toLocaleString('es-CL') + ' kg';
+  var binsHtml = availBins.slice(-20).reverse().map(function(b) {
+    return '<div class="stage-item new"><span><span class="si-id">' + b.tarja + '</span><br>' +
+      '<span style="font-size:11px;color:var(--muted)">' + b.producer.split(' ').slice(0,2).join(' ') + '</span></span>' +
+      '<span class="si-meta">' + b.caliber + '<br>' + dryingPill(b.drying) + '</span></div>';
+  }).join('');
+  document.getElementById('list-bins').innerHTML = binsHtml || '<div class="sim-idle">Sin bins disponibles</div>';
+
+  // OTs
+  document.getElementById('cnt-ots').textContent = activeOTs.length;
+  document.getElementById('sub-ots').textContent = activeOTs.length + ' activas · ' + doneOTs.length + ' completadas';
+  var otsHtml = ots.slice().reverse().slice(0, 20).map(function(o) {
+    var isDone = o.state === 'done';
+    return '<div class="stage-item' + (isDone ? '' : ' new') + '">' +
+      '<span><span class="si-id">' + o.ot + '</span><br>' +
+      '<span style="font-size:11px;color:var(--muted)">' + TIPO_LABEL[o.tipo] + ' · ' + o.bins.length + ' bins</span></span>' +
+      '<span class="si-meta">' + o.caliber + '<br>' +
+      '<span class="si-pill ' + (isDone ? 'si-fulfilled' : 'si-partial') + '">' + (isDone ? 'Listo' : 'En curso') + '</span></span></div>';
+  }).join('');
+  document.getElementById('list-ots').innerHTML = otsHtml || '<div class="sim-idle">Sin OTs aún</div>';
+
+  // Pallets
+  document.getElementById('cnt-pallets').textContent = freePal.length;
+  document.getElementById('sub-pallets').textContent = freePal.length + ' libres · ' +
+    pallets.filter(function(p){return p.allocated;}).length + ' asignados';
+  var palHtml = pallets.slice().reverse().slice(0, 20).map(function(p) {
+    return '<div class="stage-item new"><span><span class="si-id">' + p.tarja + '</span><br>' +
+      '<span style="font-size:11px;color:var(--muted)">OT ' + p.ot + '</span></span>' +
+      '<span class="si-meta">' + p.caliber + '<br>' + p.weight_kg.toLocaleString('es-CL') + ' kg</span></div>';
+  }).join('');
+  document.getElementById('list-pallets').innerHTML = palHtml || '<div class="sim-idle">Sin pallets aún</div>';
+
+  // Orders
+  document.getElementById('cnt-orders').textContent = fulfilledO.length + ' / ' + orders.length;
+  document.getElementById('sub-orders').textContent = fulfilledO.length + ' cumplidas de ' + orders.length;
+  var ordHtml = orders.map(function(o) {
+    var pct = Math.min(100, Math.round(o.allocated_kg / o.target_kg * 100));
+    var barColor = o.fulfilled ? 'var(--green)' : 'var(--purple-l)';
+    return '<div class="stage-item"><span style="flex:1">' +
+      '<span class="si-id">#' + o.id + ' ' + o.client + '</span><br>' +
+      '<span style="font-size:11px;color:var(--muted)">' + o.caliber + ' · meta: ' +
+      o.target_kg.toLocaleString('es-CL') + ' kg</span>' +
+      '<div style="margin-top:4px;height:5px;background:var(--lavender-l);border-radius:3px;overflow:hidden">' +
+        '<div style="width:' + pct + '%;height:100%;background:' + barColor + ';transition:width .3s"></div></div>' +
+      '<span style="font-size:10px;color:var(--muted)">' + o.allocated_kg.toLocaleString('es-CL') + ' / ' +
+      o.target_kg.toLocaleString('es-CL') + ' kg (' + pct + '%)</span></span>' +
+      '<span class="si-meta"><span class="si-pill ' + (o.fulfilled ? 'si-fulfilled' : 'si-partial') + '">' +
+      (o.fulfilled ? 'Cumplida' : 'Pendiente') + '</span></span></div>';
+  }).join('');
+  document.getElementById('list-orders').innerHTML = ordHtml;
+}
+
+// ── Log ──────────────────────────────────────────────────────────────────────
+var logLines = [];
+function logEvent(msg) {
+  var now = new Date();
+  var ts  = now.getHours().toString().padStart(2,'0') + ':' +
+            now.getMinutes().toString().padStart(2,'0') + ':' +
+            now.getSeconds().toString().padStart(2,'0');
+  logLines.unshift('<span class="log-ts">' + ts + '</span>  ' + msg);
+  if (logLines.length > 40) logLines.pop();
+  document.getElementById('simLog').innerHTML = logLines.join('\n');
+}
+
+// ── Speed ────────────────────────────────────────────────────────────────────
+var SPEEDS   = [2000, 1200, 700, 350, 120];
+var LABELS   = ['Lenta','Normal lenta','Normal','Rápida','Muy rápida'];
+document.getElementById('speedSlider').addEventListener('input', function() {
+  document.getElementById('speedLabel').textContent = LABELS[this.value - 1];
+  if (tickInterval) {
+    simStop();
+    simStart();
+  }
+});
+
+// ── Controls ─────────────────────────────────────────────────────────────────
+function simStart() {
+  if (tickInterval) return;
+  var speed = parseInt(document.getElementById('speedSlider').value);
+  tickInterval = setInterval(tick, SPEEDS[speed - 1]);
+  document.getElementById('btnStart').disabled = true;
+  document.getElementById('btnStop').disabled  = false;
+}
+function simStop() {
+  if (tickInterval) { clearInterval(tickInterval); tickInterval = null; }
+  document.getElementById('btnStart').disabled = false;
+  document.getElementById('btnStop').disabled  = true;
+}
+function simReset() {
+  simStop();
+  buildData();
+  logLines = [];
+  document.getElementById('simLog').innerHTML = '<span style="color:#6a8a6a">— esperando inicio —</span>';
+  document.getElementById('list-bins').innerHTML    = '<div class="sim-idle">Presioná Iniciar para comenzar</div>';
+  document.getElementById('list-ots').innerHTML     = '<div class="sim-idle"></div>';
+  document.getElementById('list-pallets').innerHTML = '<div class="sim-idle"></div>';
+  document.getElementById('list-orders').innerHTML  = '<div class="sim-idle"></div>';
+  document.getElementById('cnt-bins').textContent    = '—';
+  document.getElementById('cnt-ots').textContent     = '—';
+  document.getElementById('cnt-pallets').textContent = '—';
+  document.getElementById('cnt-orders').textContent  = '—';
+  document.getElementById('sub-bins').textContent    = 'bins disponibles';
+  document.getElementById('sub-ots').textContent     = 'OTs activas';
+  document.getElementById('sub-pallets').textContent = 'pallets disponibles';
+  document.getElementById('sub-orders').textContent  = 'órdenes cumplidas';
+}
+
+window.simStart = simStart;
+window.simStop  = simStop;
+window.simReset = simReset;
+
+buildData();
+})();
+</script>
+{% endblock %}

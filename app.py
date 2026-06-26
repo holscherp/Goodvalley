@@ -1733,6 +1733,10 @@ def create_app():
         flash('Rendimientos actualizados.', 'ok')
         return redirect(url_for('rendimientos'))
 
+    @app.route('/simulador')
+    def simulador():
+        return render_template('simulador.html')
+
     return app
 
 

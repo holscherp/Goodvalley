@@ -35,6 +35,7 @@
         <button class="act-item" type="button" onclick="gvSyncFullPopup();document.getElementById('act-dd').classList.remove('open')">
           Sync Completo
         </button>
+        <a class="act-item" href="{{ url_for('simulador') }}">Simulador</a>
         <form action="{{ url_for('sync_upload') }}" method="post" enctype="multipart/form-data" style="margin:0">
           <label class="act-item act-upload" title="Subir bins.json manualmente">
             Subir JSON
