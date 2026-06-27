@@ -141,7 +141,10 @@
       <div class="big" id="s-pal-count">—</div><div class="lbl">Pallets disponibles</div>
     </div>
     <div class="card" style="min-width:0;padding:12px 18px">
-      <div class="big" id="s-pal-kg">—</div><div class="lbl">kg totales</div>
+      <div class="big" id="s-pal-kg">—</div><div class="lbl">kg en pallets</div>
+    </div>
+    <div class="card" style="min-width:0;padding:12px 18px;border-left:4px solid var(--warn)">
+      <div class="big" id="s-box-count">—</div><div class="lbl">Cajas excedente (×10 kg)</div>
     </div>
   </div>
   <p class="muted" style="font-size:12px;margin:0 0 10px">Las órdenes se muestran agrupadas. Hacé clic en la tarja de un pallet o en un bin para ver trazabilidad completa.</p>
@@ -251,6 +254,7 @@ var ORDER_DEFS = [
 var bins    = [];
 var orders  = [];
 var pallets = [];
+var boxes   = [];   // 10-kg surplus boxes
 var activeTab        = 'bins';
 var assigningOrderId = null;
 var selectedBins     = {};
@@ -258,6 +262,7 @@ var selectedBins     = {};
 var binCtr    = 0;
 var otCtr     = 0;
 var palletCtr = 0;
+var boxCtr    = 0;
 var simMins   = 0;
 var SIM_BASE  = new Date('2026-06-27T08:00:00');
 
@@ -276,8 +281,8 @@ function newPalletTarja() { return '2601' + (308001 + palletCtr++); }
 // ── Build seed data ───────────────────────────────────────────────────────────
 function buildData() {
   rand = mkRng(20260101);
-  binCtr = 0; otCtr = 0; palletCtr = 0; simMins = 0;
-  bins = []; orders = []; pallets = [];
+  binCtr = 0; otCtr = 0; palletCtr = 0; boxCtr = 0; simMins = 0;
+  bins = []; orders = []; pallets = []; boxes = [];
   assigningOrderId = null; selectedBins = {};
 
   // For each order, compute how many bins are needed at ~380 kg avg, then
@@ -387,9 +392,12 @@ function updateBadges() {
   var pb = el('bdg-proc');
   pb.textContent = pActive; pb.style.display = pActive ? '' : 'none';
 
-  var palAvail = pallets.filter(function(p){ return p.status==='disponible'; }).length;
+  var palAvail  = pallets.filter(function(p){ return p.status==='disponible'; }).length;
+  var boxAvail  = boxes.filter(function(b){ return b.status==='disponible'; }).length;
   var palb = el('bdg-pal');
-  palb.textContent = palAvail; palb.style.display = palAvail ? '' : 'none';
+  var palTotal = palAvail + (boxAvail ? 0 : 0); // pallets badge = pallets only
+  palb.textContent = palAvail + (boxAvail ? ' +'+boxAvail+'📦' : '');
+  palb.style.display = (palAvail || boxAvail) ? '' : 'none';
 }
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
@@ -467,6 +475,23 @@ function renderOrdenes() {
     html += '<div class="kg-box"><div class="lbl">Pedido (terminado)</div><div class="val">'+fmtKg(o.target_kg)+' kg</div></div>';
     html += '<div class="kg-box mp"><div class="lbl">Materia prima necesaria (bins)</div><div class="val">'+fmtKg(mpNeeded)+' kg · rend. '+Math.round(yr*100)+'%</div></div>';
     html += '</div>';
+
+    // Matching surplus boxes from previous orders
+    if (o.status === 'open') {
+      var matchBoxes = boxes.filter(function(bx){
+        return bx.status==='disponible' && bx.caliber===o.caliber && bx.tipo===o.tipo && bx.drying===o.drying;
+      });
+      if (matchBoxes.length) {
+        var boxOTs = {};
+        matchBoxes.forEach(function(bx){ boxOTs[bx.source_ot]=true; });
+        html += '<div style="margin:8px 0 4px;padding:8px 12px;background:#fff4e0;border:1px solid #f0c97a;border-radius:8px;font-size:12px;display:flex;align-items:center;gap:10px">';
+        html += '<span style="font-size:18px">📦</span>';
+        html += '<span><strong>'+matchBoxes.length+' cajas disponibles ('+fmtKg(matchBoxes.length*10)+' kg)</strong> de excedente compatible — mismo calibre, proceso y secado.';
+        html += ' Origen: OT '+Object.keys(boxOTs).join(', ')+'.';
+        html += ' Estas cajas se pueden incluir al despachar esta orden.</span>';
+        html += '</div>';
+      }
+    }
 
     // If bins are assigned, show progress
     if (binObjs.length) {
@@ -591,8 +616,10 @@ function renderProcesos() {
 function renderPallets() {
   var avail   = pallets.filter(function(p){ return p.status==='disponible'; });
   var totalKg = avail.reduce(function(s,p){return s+p.weight_kg;},0);
+  var availBoxes = boxes.filter(function(b){ return b.status==='disponible'; });
   el('s-pal-count').textContent = avail.length;
   el('s-pal-kg').textContent    = fmtKg(totalKg)+' kg';
+  el('s-box-count').textContent = availBoxes.length || '—';
 
   var cont  = el('pallets-container');
   var empty = el('pallets-empty');
@@ -660,6 +687,39 @@ function renderPallets() {
 
     html+='</div>';
   });
+
+  // ── Cajas de excedente ──────────────────────────────────────────────────
+  var availBoxes2 = boxes.filter(function(b){ return b.status==='disponible'; });
+  if (availBoxes2.length) {
+    html+='<h3 style="margin:22px 0 10px">Cajas de Excedente (10 kg c/u)</h3>';
+
+    // Group by caliber+tipo+drying
+    var boxGroups={};
+    availBoxes2.forEach(function(bx){
+      var key=bx.caliber+'|'+bx.tipo+'|'+bx.drying;
+      if(!boxGroups[key]) boxGroups[key]={caliber:bx.caliber,tipo:bx.tipo,drying:bx.drying,count:0,ots:{}};
+      boxGroups[key].count++;
+      boxGroups[key].ots[bx.source_ot]=true;
+    });
+
+    Object.keys(boxGroups).forEach(function(key){
+      var g=boxGroups[key];
+      var otList=Object.keys(g.ots).join(', ');
+      html+='<div class="line-card" style="margin:0 0 10px;border-left:4px solid var(--warn)">';
+      html+='<div class="line-head"><div>';
+      html+='<span class="spec-main" style="font-size:15px">'+g.caliber+' · '+TIPO_LABEL[g.tipo]+' · '+DRY_LABEL[g.drying]+'</span>';
+      html+='<span class="spec-sub" style="display:block;margin-top:2px">Origen: OT '+otList+'</span>';
+      html+='</div>';
+      html+='<div style="text-align:right">';
+      html+='<div style="font-size:22px;font-weight:700;color:var(--warn)">'+g.count+'</div>';
+      html+='<div style="font-size:11px;color:var(--muted)">cajas · '+fmtKg(g.count*10)+' kg</div>';
+      html+='</div></div>';
+      html+='<p style="font-size:12px;color:var(--muted);margin:6px 0 0">Disponibles para órdenes con el mismo calibre, proceso y secado. '+
+            'Si hay una orden abierta compatible, aparecerá indicado en la tab Órdenes de Venta.</p>';
+      html+='</div>';
+    });
+  }
+
   cont.innerHTML=html;
 }
 
@@ -757,7 +817,11 @@ function procesarOT(ot) {
   order.status='procesado'; order.processed_at=ts;
   binObjs.forEach(function(b){ b.processed_at=ts; });
 
-  var remaining=netoKg, palletTarjas=[];
+  // Pallets cover the ordered quantity; surplus → cajas de 10 kg
+  var palletKg  = Math.min(order.target_kg, netoKg);
+  var surplusKg = netoKg - palletKg;
+
+  var remaining=palletKg, palletTarjas=[];
   while (remaining>0) {
     var palKg=Math.min(ri(700,825),remaining);
     var pt=newPalletTarja();
@@ -766,6 +830,22 @@ function procesarOT(ot) {
                    created_at:ts, dispatched_at:null });
     palletTarjas.push(pt); remaining-=palKg;
   }
+
+  // Surplus → cajas de 10 kg (tagged with same caliber / tipo / drying)
+  var numBoxes = Math.floor(surplusKg / 10);
+  for (var bi=0; bi<numBoxes; bi++) {
+    boxes.push({
+      id:         'CAJ-' + String(1000 + boxCtr++),
+      caliber:    order.caliber,
+      tipo:       order.tipo,
+      drying:     order.drying,
+      source_ot:  ot,
+      weight_kg:  10,
+      created_at: ts,
+      status:     'disponible'
+    });
+  }
+
   binObjs.forEach(function(b){ b.status='en_pallet'; b.pallet_tarja=palletTarjas[0]||null; });
   updateBadges(); showTab('pallets');
 }
