@@ -3,7 +3,6 @@
 
 {% block content %}
 <style>
-/* ── Sim nav ── */
 .sim-nav { display:flex; gap:2px; margin-bottom:18px; border-bottom:2px solid var(--line); padding-bottom:0 }
 .sim-tab {
   padding:8px 16px; border-radius:8px 8px 0 0; font-size:13px; font-weight:600;
@@ -16,7 +15,6 @@
 .sim-panel   { display:none }
 .sim-panel.on{ display:block }
 
-/* ── Modal ── */
 .sim-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:200; align-items:center; justify-content:center }
 .sim-overlay.open { display:flex }
 .sim-modal {
@@ -26,7 +24,6 @@
 }
 .modal-close { float:right; background:none; border:none; font-size:20px; cursor:pointer; color:var(--muted); line-height:1; margin:-4px -4px 0 0 }
 
-/* ── Stepper ── */
 .stepper { display:flex; flex-direction:column }
 .step { display:flex; gap:14px; padding:10px 0 }
 .step + .step { border-top:1px dashed var(--line) }
@@ -34,27 +31,30 @@
            display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700 }
 .step-ic.done { background:var(--purple); color:#fff }
 .step-ic.pend { background:var(--line); color:var(--muted) }
-.step-title { font-size:13px; font-weight:700; color:var(--ink) }
-.step-detail{ font-size:12px; color:var(--muted); margin-top:3px; line-height:1.5 }
+.step-title  { font-size:13px; font-weight:700; color:var(--ink) }
+.step-detail { font-size:12px; color:var(--muted); margin-top:3px; line-height:1.5 }
 
-/* ── Assign panel ── */
 .assign-panel { background:var(--lavender-l); border:1px solid var(--lavender); border-radius:var(--radius); padding:16px; margin-top:10px }
-
-/* ── Sel bar ── */
 .sel-bar {
   display:flex; align-items:center; justify-content:space-between; gap:12px;
-  background:#fff; border:1px solid var(--lavender);
-  border-radius:var(--radius); padding:10px 14px; margin:0 0 10px;
-  position:sticky; top:64px; z-index:9;
+  background:#fff; border:1px solid var(--lavender); border-radius:var(--radius);
+  padding:10px 14px; margin:0 0 10px; position:sticky; top:64px; z-index:9;
   box-shadow:0 2px 8px rgba(75,24,104,.18);
 }
-
-/* ── Misc ── */
-.clickable { cursor:pointer }
-.clickable:hover { color:var(--purple-l) }
 .tag-tarja { font-family:ui-monospace,monospace; font-size:11px; border:1px solid var(--line);
              border-radius:4px; padding:2px 7px; cursor:pointer; display:inline-block }
 .tag-tarja:hover { background:var(--lavender); border-color:var(--purple-l) }
+
+.kg-row { display:flex; gap:20px; flex-wrap:wrap; margin:8px 0 }
+.kg-box { background:#fff; border:1px solid var(--line); border-radius:8px; padding:8px 14px; min-width:160px }
+.kg-box .lbl { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; font-weight:600 }
+.kg-box .val { font-size:17px; font-weight:700; color:var(--purple); margin-top:2px }
+.kg-box.mp   { border-color:var(--green); }
+.kg-box.mp .val { color:#2e6b18 }
+.progress-wrap { margin:8px 0 4px }
+.progress-bar  { height:7px; background:var(--lavender-l); border-radius:4px; overflow:hidden }
+.progress-fill { height:100%; background:var(--purple-l); transition:width .3s }
+.progress-fill.over { background:var(--green) }
 </style>
 
 <div class="row-between" style="margin-bottom:14px">
@@ -65,14 +65,13 @@
   <button class="btn btn-danger" onclick="SIM.reset()">↺ Resetear todo</button>
 </div>
 
-<!-- ── Tab nav ── -->
 <div class="sim-nav">
   <button class="sim-tab on" id="tab-bins"     onclick="SIM.showTab('bins')">
     Bins en Bodega <span id="bdg-bins" class="badge badge-open" style="margin-left:5px">—</span>
   </button>
   <button class="sim-tab" id="tab-ordenes"  onclick="SIM.showTab('ordenes')">Órdenes de Venta</button>
   <button class="sim-tab" id="tab-procesos" onclick="SIM.showTab('procesos')">
-    Procesos <span id="bdg-proc" class="badge badge-en_proceso" style="margin-left:5px;display:none"></span>
+    Procesos <span id="bdg-proc" class="badge badge-allocated" style="margin-left:5px;display:none"></span>
   </button>
   <button class="sim-tab" id="tab-pallets"  onclick="SIM.showTab('pallets')">
     Pallets en Bodega <span id="bdg-pal" class="badge badge-open" style="margin-left:5px;display:none"></span>
@@ -80,7 +79,7 @@
   <button class="sim-tab" id="tab-despacho" onclick="SIM.showTab('despacho')">Despacho</button>
 </div>
 
-<!-- ════════════════════════════ BINS EN BODEGA ════════════════════════════ -->
+<!-- BINS EN BODEGA -->
 <div class="sim-panel on" id="panel-bins">
   <div class="cards" style="margin:0 0 12px">
     <div class="card" style="min-width:0;padding:12px 18px">
@@ -111,7 +110,7 @@
       </select>
     </div>
   </div>
-  <p class="muted" style="font-size:12px;margin:0 0 6px">Hacé clic en una fila para ver la trazabilidad completa.</p>
+  <p class="muted" style="font-size:12px;margin:0 0 6px">Hacé clic en una fila para ver la trazabilidad completa del bin.</p>
   <table class="grid tight">
     <thead><tr>
       <th>Tarja</th><th>Productor</th><th>Calibre</th><th>Secado</th><th>Temporada</th><th class="num">kg</th>
@@ -121,21 +120,21 @@
   <div class="empty" id="bins-empty" style="display:none"><p>No hay bins disponibles en bodega.</p></div>
 </div>
 
-<!-- ════════════════════════════ ÓRDENES ════════════════════════════ -->
+<!-- ÓRDENES -->
 <div class="sim-panel" id="panel-ordenes">
   <div id="ordenes-container"></div>
 </div>
 
-<!-- ════════════════════════════ PROCESOS ════════════════════════════ -->
+<!-- PROCESOS -->
 <div class="sim-panel" id="panel-procesos">
   <div id="procesos-container"></div>
   <div class="empty" id="procesos-empty" style="display:none">
     <p>No hay procesos activos.</p>
-    <p class="muted" style="margin-top:6px">Confirmá una asignación de bins en <strong>Órdenes de Venta</strong> para iniciar un proceso.</p>
+    <p class="muted" style="margin-top:6px">Confirmá una asignación de bins en <strong>Órdenes de Venta</strong>.</p>
   </div>
 </div>
 
-<!-- ════════════════════════════ PALLETS EN BODEGA ════════════════════════════ -->
+<!-- PALLETS EN BODEGA -->
 <div class="sim-panel" id="panel-pallets">
   <div class="cards" style="margin:0 0 12px">
     <div class="card" style="min-width:0;padding:12px 18px">
@@ -154,11 +153,11 @@
   </table>
   <div class="empty" id="pallets-empty">
     <p>No hay pallets en bodega.</p>
-    <p class="muted" style="margin-top:6px">Procesá una OT en <strong>Procesos</strong> para generar pallets.</p>
+    <p class="muted" style="margin-top:6px">Procesá una OT en <strong>Procesos</strong>.</p>
   </div>
 </div>
 
-<!-- ════════════════════════════ DESPACHO ════════════════════════════ -->
+<!-- DESPACHO -->
 <div class="sim-panel" id="panel-despacho">
   <table class="grid tight" id="tbl-despacho" style="display:none">
     <thead><tr>
@@ -168,11 +167,11 @@
   </table>
   <div class="empty" id="despacho-empty">
     <p>No hay pallets despachados todavía.</p>
-    <p class="muted" style="margin-top:6px">Despachá un pallet desde <strong>Pallets en Bodega</strong>.</p>
+    <p class="muted" style="margin-top:6px">Despachá desde <strong>Pallets en Bodega</strong>.</p>
   </div>
 </div>
 
-<!-- ════════════════════════════ TRACEABILITY MODAL ════════════════════════════ -->
+<!-- MODAL -->
 <div class="sim-overlay" id="modal-overlay" onclick="if(event.target===this)SIM.closeModal()">
   <div class="sim-modal">
     <button class="modal-close" onclick="SIM.closeModal()">✕</button>
@@ -201,54 +200,77 @@ function ri(a, b) { return Math.floor(rand() * (b - a + 1)) + a; }
 function pick(arr) { return arr[Math.floor(rand() * arr.length)]; }
 
 // ── Constants ────────────────────────────────────────────────────────────────
-var CALIBERS  = ['30/40','40/50','50/60','60/70','70/80','80/90','90/100','100/120','120/144','144/170','170+'];
-var DRYINGS   = ['horno','horno','horno','cancha','termino_secado'];
 var PRODUCERS = [
   'FRUTALES INTERIORES SA','AGRICOLA MAI LTDA','HERNAN DONOSO',
   'VINA SIEGEL SA','AGRICOLA SANTA PAULA','PACKING MERQUEN SPA',
   'SOC. COMERCIAL EZQUERRA LTDA','QUILLAY FRUT INTERIORES',
   'AGRICOLA SODIA LTDA','MARIA DIAZ ESCANDON'
 ];
+
+var TIPO_KEY   = { cn:'natural', tsc:'tsc', tcc:'tcc', ss:'ss', elliot:'elliot' };
 var TIPO_LABEL = { cn:'Condición Natural', tsc:'TSC', tcc:'TCC', ss:'SS', elliot:'Elliot' };
-var CLIENTS    = ['FIRST GRADE','BEIJING ZHENWEIFANG','STONE WEST','GOODVALLEY EXPORT','ASIA FRUITS CO.','PLUM PACIFIC LTD'];
 var DRY_LABEL  = { horno:'Horno', cancha:'Cancha', termino_secado:'Término Secado' };
 var DRY_CLS    = { horno:'pill-horno', cancha:'pill-cancha', termino_secado:'pill-termino_secado' };
 var ORD_LABEL  = { open:'Abierta', en_proceso:'En proceso', procesado:'Procesada', despachado:'Despachada' };
 var ORD_CLS    = { open:'badge-open', en_proceso:'badge-allocated', procesado:'badge-confirmed', despachado:'badge-gone' };
 
-var YIELDS = {
-  tsc:    { 30:.64,40:.66,50:.69,60:.72,70:.75,80:.78,90:.81,100:.78,120:.72,144:.68,170:.64 },
-  ss:     { 30:.61,40:.63,50:.65,60:.68,70:.71,80:.74,90:.77,100:.74,120:.68,144:.64,170:.60 },
-  tcc:    { 30:.58,40:.61,50:.64,60:.67,70:.71,80:.74,90:.77,100:.74,120:.67,144:.63,170:.59 },
-  elliot: { 90:.69,100:.66,120:.60,144:.57,170:.54 },
-  cn:     { 30:.52,40:.54,50:.56,60:.59,70:.62,80:.65,90:.59,100:.57,120:.54,144:.51,170:.48 }
+// ── Real yield table (caliber key = midpoint, e.g. 50/60 → 55) ──────────────
+// Source: models.py _YIELD_TABLE (verified against real data)
+var YIELD_TABLE = {
+  tsc:     { 35:0.83, 45:0.83, 55:0.85, 65:0.83, 75:0.82, 85:0.79, 95:0.78, 110:0.75, 132:0.72 },
+  tcc:     { 35:1.10, 45:1.10, 55:1.10, 65:1.10, 75:1.10, 85:1.10, 95:1.10, 110:1.10, 132:1.10 },
+  ss:      { 35:0.75, 45:0.75, 55:0.75, 65:0.75, 75:0.75, 85:0.75, 95:0.75 },
+  elliot:  { 95:0.75, 110:0.75, 132:0.75 },
+  natural: { 35:0.98, 45:0.98, 55:0.98, 65:0.98, 75:0.98, 85:0.98, 90:0.98, 95:0.98, 110:0.98, 132:0.98, 157:0.98 }
 };
-function getYield(tipo, calStr) {
-  var n   = parseInt(calStr, 10) || 80;
-  var tbl = YIELDS[tipo] || YIELDS.cn;
-  if (tbl[n] !== undefined) return tbl[n];
-  var keys = Object.keys(tbl).map(Number).sort(function (a, b) { return a - b; });
-  for (var i = 0; i < keys.length; i++) if (keys[i] >= n) return tbl[keys[i]];
-  return tbl[keys[keys.length - 1]];
+var FLAT_YIELD = { tsc:0.80, tcc:1.10, ss:0.75, elliot:0.75, natural:0.98 };
+
+function calMidpoint(calStr) {
+  if (!calStr || calStr === '170+') return 170;
+  var p = calStr.split('/');
+  if (p.length === 2) return Math.round((parseInt(p[0], 10) + parseInt(p[1], 10)) / 2);
+  return parseInt(calStr, 10) || 85;
 }
+
+function getYield(tipo, calStr) {
+  var key = TIPO_KEY[tipo] || tipo;
+  var mid = calMidpoint(calStr);
+  var tbl = YIELD_TABLE[key];
+  if (!tbl) return FLAT_YIELD[key] || 0.80;
+  if (tbl[mid] !== undefined) return tbl[mid];
+  var keys = Object.keys(tbl).map(Number).sort(function(a,b){return a-b;});
+  for (var i = 0; i < keys.length; i++) if (keys[i] >= mid) return tbl[keys[i]];
+  return tbl[keys[keys.length-1]];
+}
+
+// ── Order definitions (fixed for reproducibility) ────────────────────────────
+// Each order has: client, caliber, tipo, drying, target_kg (finished product)
+// Drying is PART of the order spec — only matching bins should be assignable.
+var ORDER_DEFS = [
+  { client:'FIRST GRADE',          caliber:'50/60',   tipo:'cn',     drying:'horno',          target_kg:2800 },
+  { client:'BEIJING ZHENWEIFANG',  caliber:'60/70',   tipo:'tsc',    drying:'horno',          target_kg:3500 },
+  { client:'STONE WEST',           caliber:'70/80',   tipo:'cn',     drying:'cancha',         target_kg:2600 },
+  { client:'GOODVALLEY EXPORT',    caliber:'80/90',   tipo:'tcc',    drying:'horno',          target_kg:4200 },
+  { client:'ASIA FRUITS CO.',      caliber:'90/100',  tipo:'ss',     drying:'cancha',         target_kg:2400 },
+  { client:'PLUM PACIFIC LTD',     caliber:'100/120', tipo:'tsc',    drying:'horno',          target_kg:3100 },
+  { client:'FIRST GRADE',          caliber:'120/144', tipo:'cn',     drying:'termino_secado', target_kg:2200 },
+  { client:'BEIJING ZHENWEIFANG',  caliber:'80/90',   tipo:'elliot', drying:'horno',          target_kg:2000 }
+];
 
 // ── State ────────────────────────────────────────────────────────────────────
 var bins    = [];
 var orders  = [];
 var pallets = [];
-
 var activeTab        = 'bins';
 var assigningOrderId = null;
-var selectedBins     = {};    // tarja → true
+var selectedBins     = {};
 
-// counters reset per session
 var binCtr    = 0;
 var otCtr     = 0;
 var palletCtr = 0;
+var simMins   = 0;
+var SIM_BASE  = new Date('2026-06-27T08:00:00');
 
-// simulated time
-var SIM_BASE = new Date('2026-06-27T08:00:00');
-var simMins  = 0;
 function simNow() {
   var d = new Date(SIM_BASE.getTime() + simMins * 60000);
   return d.getDate().toString().padStart(2,'0') + '-' +
@@ -268,223 +290,267 @@ function buildData() {
   bins = []; orders = []; pallets = [];
   assigningOrderId = null; selectedBins = {};
 
+  // For each order, compute how many bins are needed at ~380 kg avg, then
+  // generate those bins with the EXACT matching caliber+drying so the demo
+  // always has enough material to fill every order.
+  var orderBinGroups = [];
   var RECV_BASE = new Date('2026-03-10T07:00:00');
-  for (var i = 0; i < 60; i++) {
-    var rd = new Date(RECV_BASE.getTime() + i * ri(2, 10) * 3600000);
-    var recvStr = rd.getDate().toString().padStart(2,'0') + '-' +
-                  (rd.getMonth()+1).toString().padStart(2,'0') + '-' + rd.getFullYear();
+  var recvOffset = 0;
+
+  ORDER_DEFS.forEach(function(def) {
+    var yr        = getYield(def.tipo, def.caliber);
+    var rawNeeded = def.target_kg / yr;
+    var numBins   = Math.ceil(rawNeeded / 370) + 2; // 2 extra so order is clearly fulfillable
+    var group     = [];
+    for (var i = 0; i < numBins; i++) {
+      recvOffset += ri(3, 14);
+      var rd  = new Date(RECV_BASE.getTime() + recvOffset * 3600000);
+      var rec = rd.getDate().toString().padStart(2,'0') + '-' +
+                (rd.getMonth()+1).toString().padStart(2,'0') + '-' + rd.getFullYear();
+      // Weight: distribute so total just exceeds rawNeeded
+      var wt = Math.round(rawNeeded / numBins * ri(90, 110) / 100);
+      wt = Math.max(260, Math.min(580, wt));
+      group.push({
+        tarja:        newBinTarja(),
+        producer:     pick(PRODUCERS),
+        caliber:      def.caliber,
+        drying:       def.drying,
+        weight_kg:    wt,
+        temporada:    2025,
+        received_at:  rec,
+        status:       'bodega',
+        assigned_ot:  null, assigned_at:  null,
+        processed_at: null, pallet_tarja: null, dispatched_at:null
+      });
+    }
+    orderBinGroups.push(group);
+  });
+
+  // Generate 12 extra bins with random calibers/dryings for variety
+  var EXTRA_CALS = ['30/40','40/50','60/70','70/80','80/90','90/100','120/144'];
+  var EXTRA_DRY  = ['horno','horno','cancha','termino_secado'];
+  for (var j = 0; j < 12; j++) {
+    recvOffset += ri(2, 8);
+    var rd2 = new Date(RECV_BASE.getTime() + recvOffset * 3600000);
+    var rec2 = rd2.getDate().toString().padStart(2,'0') + '-' +
+               (rd2.getMonth()+1).toString().padStart(2,'0') + '-' + rd2.getFullYear();
     bins.push({
       tarja:        newBinTarja(),
       producer:     pick(PRODUCERS),
-      caliber:      pick(CALIBERS),
-      drying:       pick(DRYINGS),
-      weight_kg:    ri(260, 580),
+      caliber:      pick(EXTRA_CALS),
+      drying:       pick(EXTRA_DRY),
+      weight_kg:    ri(280, 560),
       temporada:    2025,
-      received_at:  recvStr,
-      // lifecycle
-      status:       'bodega',   // bodega | en_proceso | en_pallet | despachado
-      assigned_ot:  null,
-      assigned_at:  null,
-      processed_at: null,
-      pallet_tarja: null,
-      dispatched_at:null
+      received_at:  rec2,
+      status:       'bodega',
+      assigned_ot:  null, assigned_at:  null,
+      processed_at: null, pallet_tarja: null, dispatched_at:null
     });
   }
 
-  var OCals  = ['50/60','60/70','70/80','80/90','80/90','90/100','100/120','120/144'];
-  var OTipos = ['cn','tsc','cn','tcc','ss','cn','tsc','elliot'];
-  for (var j = 0; j < 8; j++) {
+  // Interleave order-specific bins with extras so they're mixed in the table
+  orderBinGroups.forEach(function(g){ g.forEach(function(b){ bins.push(b); }); });
+  // shuffle for natural-looking display
+  bins.sort(function(){ return rand() - 0.5; });
+
+  // Build orders
+  ORDER_DEFS.forEach(function(def) {
     orders.push({
-      id:          j + 1,
+      id:          orders.length + 1,
       ot:          newOT(),
-      client:      CLIENTS[j % CLIENTS.length],
-      caliber:     OCals[j],
-      tipo:        OTipos[j],
-      target_kg:   ri(5000, 16000),
-      status:      'open',   // open | en_proceso | procesado | despachado
+      client:      def.client,
+      caliber:     def.caliber,
+      tipo:        def.tipo,
+      drying:      def.drying,
+      target_kg:   def.target_kg,
+      status:      'open',
       bin_tarjas:  [],
       assigned_at: null,
       processed_at:null
     });
-  }
+  });
 }
 
-// ── Lookup helpers ────────────────────────────────────────────────────────────
-function findBin(t)     { return bins.find(function(b){ return b.tarja === t; }); }
-function findOrder(id)  { return orders.find(function(o){ return o.id === id; }); }
-function findOrderOT(ot){ return orders.find(function(o){ return o.ot === ot; }); }
-function findPallet(t)  { return pallets.find(function(p){ return p.tarja === t; }); }
+// ── Lookups ───────────────────────────────────────────────────────────────────
+function findBin(t)      { return bins.find(function(b){ return b.tarja===t; }); }
+function findOrder(id)   { return orders.find(function(o){ return o.id===id; }); }
+function findOrderOT(ot) { return orders.find(function(o){ return o.ot===ot; }); }
+function findPallet(t)   { return pallets.find(function(p){ return p.tarja===t; }); }
 
-// ── Pill / badge helpers ──────────────────────────────────────────────────────
+// ── Formatting helpers ────────────────────────────────────────────────────────
 function dryPill(d) {
-  return '<span class="pill ' + (DRY_CLS[d]||'') + '">' + (DRY_LABEL[d]||d) + '</span>';
+  return '<span class="pill '+(DRY_CLS[d]||'')+'">'+(DRY_LABEL[d]||d)+'</span>';
 }
 function ordBadge(s) {
-  return '<span class="badge ' + (ORD_CLS[s]||'') + '">' + (ORD_LABEL[s]||s) + '</span>';
+  return '<span class="badge '+(ORD_CLS[s]||'')+'">'+( ORD_LABEL[s]||s)+'</span>';
 }
-function fmtKg(n) { return (n || 0).toLocaleString('es-CL'); }
+function fmtKg(n) { return Math.round(n||0).toLocaleString('es-CL'); }
+function el(id)   { return document.getElementById(id); }
 
-// ── Badge counters (always up-to-date) ───────────────────────────────────────
+// ── Badges ────────────────────────────────────────────────────────────────────
 function updateBadges() {
-  var bAvail = bins.filter(function(b){ return b.status === 'bodega'; }).length;
+  var bAvail = bins.filter(function(b){ return b.status==='bodega'; }).length;
   el('bdg-bins').textContent = bAvail;
 
-  var pActive = orders.filter(function(o){ return o.status === 'en_proceso'; }).length;
+  var pActive = orders.filter(function(o){ return o.status==='en_proceso'; }).length;
   var pb = el('bdg-proc');
   pb.textContent = pActive; pb.style.display = pActive ? '' : 'none';
 
-  var palAvail = pallets.filter(function(p){ return p.status === 'disponible'; }).length;
+  var palAvail = pallets.filter(function(p){ return p.status==='disponible'; }).length;
   var palb = el('bdg-pal');
   palb.textContent = palAvail; palb.style.display = palAvail ? '' : 'none';
 }
-
-function el(id) { return document.getElementById(id); }
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 function showTab(name) {
   activeTab = name;
   document.querySelectorAll('.sim-tab').forEach(function(t){ t.classList.remove('on'); });
   document.querySelectorAll('.sim-panel').forEach(function(p){ p.classList.remove('on'); });
-  el('tab-'   + name).classList.add('on');
-  el('panel-' + name).classList.add('on');
-  renderTab();
-  updateBadges();
+  el('tab-'+name).classList.add('on');
+  el('panel-'+name).classList.add('on');
+  renderTab(); updateBadges();
 }
-
 function renderTab() {
-  if (activeTab === 'bins')     renderBins();
-  if (activeTab === 'ordenes')  renderOrdenes();
-  if (activeTab === 'procesos') renderProcesos();
-  if (activeTab === 'pallets')  renderPallets();
-  if (activeTab === 'despacho') renderDespacho();
+  if (activeTab==='bins')     renderBins();
+  if (activeTab==='ordenes')  renderOrdenes();
+  if (activeTab==='procesos') renderProcesos();
+  if (activeTab==='pallets')  renderPallets();
+  if (activeTab==='despacho') renderDespacho();
 }
 
-// ═══════════════════════════════ RENDER BINS ═════════════════════════════════
+// ════════════════════════════ RENDER BINS ════════════════════════════════════
 function renderBins() {
-  var calF = (el('f-cal') || {}).value || '';
-  var dryF = (el('f-dry') || {}).value || '';
-
-  var allAvail = bins.filter(function(b){ return b.status === 'bodega'; });
-  var filtered = allAvail.filter(function(b){
-    return (!calF || b.caliber === calF) && (!dryF || b.drying === dryF);
+  var calF = (el('f-cal')||{}).value||'';
+  var dryF = (el('f-dry')||{}).value||'';
+  var all  = bins.filter(function(b){ return b.status==='bodega'; });
+  var filt = all.filter(function(b){
+    return (!calF||b.caliber===calF)&&(!dryF||b.drying===dryF);
   });
+  el('s-bins-count').textContent = all.length;
+  el('s-bins-kg').textContent    = fmtKg(all.reduce(function(s,b){return s+b.weight_kg;},0))+' kg';
 
-  el('s-bins-count').textContent = allAvail.length;
-  el('s-bins-kg').textContent    = fmtKg(allAvail.reduce(function(s,b){ return s+b.weight_kg; }, 0)) + ' kg';
-
-  var tbody = el('tb-bins');
-  var empty = el('bins-empty');
+  var tbody = el('tb-bins'), empty = el('bins-empty');
   tbody.innerHTML = '';
-  if (!filtered.length) { empty.style.display=''; return; }
-  empty.style.display = 'none';
-
-  filtered.forEach(function(b) {
+  if (!filt.length){ empty.style.display=''; return; }
+  empty.style.display='none';
+  filt.forEach(function(b){
     var tr = document.createElement('tr');
-    tr.style.cursor = 'pointer';
-    tr.title = 'Ver trazabilidad';
+    tr.style.cursor='pointer'; tr.title='Ver trazabilidad';
     tr.innerHTML =
-      '<td class="mono">' + b.tarja + '</td>' +
-      '<td>' + b.producer + '</td>' +
-      '<td>' + b.caliber  + '</td>' +
-      '<td>' + dryPill(b.drying) + '</td>' +
-      '<td>' + b.temporada + '</td>' +
-      '<td class="num">' + fmtKg(b.weight_kg) + '</td>';
+      '<td class="mono">'+b.tarja+'</td>'+
+      '<td>'+b.producer+'</td>'+
+      '<td>'+b.caliber+'</td>'+
+      '<td>'+dryPill(b.drying)+'</td>'+
+      '<td>'+b.temporada+'</td>'+
+      '<td class="num">'+fmtKg(b.weight_kg)+'</td>';
     tr.addEventListener('click', function(){ openModal('bin', b.tarja); });
     tbody.appendChild(tr);
   });
 }
 
-// ════════════════════════════ RENDER ÓRDENES ═════════════════════════════════
+// ═══════════════════════════ RENDER ÓRDENES ══════════════════════════════════
 function renderOrdenes() {
   var html = '';
   orders.forEach(function(o) {
-    var binObjs   = o.bin_tarjas.map(findBin).filter(Boolean);
-    var assignedKg = binObjs.reduce(function(s,b){ return s+b.weight_kg; }, 0);
-    var isOpen     = o.status === 'open';
+    var binObjs    = o.bin_tarjas.map(findBin).filter(Boolean);
+    var assignedKg = binObjs.reduce(function(s,b){return s+b.weight_kg;},0);
+    var yr         = getYield(o.tipo, o.caliber);
+    var mpNeeded   = Math.ceil(o.target_kg / yr);   // raw kg needed
     var isAssigning = assigningOrderId === o.id;
 
-    html += '<div class="line-card' + (isAssigning ? ' satisfied' : '') + '" style="margin:0 0 12px">';
+    html += '<div class="line-card'+(isAssigning?' satisfied':'')+'" style="margin:0 0 12px">';
 
-    // ── Head ──
-    html += '<div class="line-head">';
-    html += '<div>';
-    html += '<span class="spec-main">' + o.client + '</span>';
-    html += '<span class="spec-sub" style="display:block;margin-top:2px">OT ' + o.ot + ' · ' + TIPO_LABEL[o.tipo] + ' · Calibre ' + o.caliber + '</span>';
-    html += '</div>';
-    html += '<div style="display:flex;gap:8px;align-items:center">';
+    // Head
+    html += '<div class="line-head"><div>';
+    html += '<span class="spec-main">'+o.client+'</span>';
+    html += '<span class="spec-sub" style="display:block;margin-top:2px">OT '+o.ot+' · '+TIPO_LABEL[o.tipo]+' · Calibre '+o.caliber+' · Secado: '+DRY_LABEL[o.drying]+'</span>';
+    html += '</div><div style="display:flex;gap:8px;align-items:center">';
     html += ordBadge(o.status);
-    if (isOpen && !isAssigning) {
-      html += '<button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="SIM.startAssign(' + o.id + ')">+ Asignar bins</button>';
+    if (o.status==='open'&&!isAssigning) {
+      html += '<button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="SIM.startAssign('+o.id+')">+ Asignar bins</button>';
     }
-    html += '</div>';
-    html += '</div>'; // line-head
+    html += '</div></div>';
 
-    // ── Meta ──
-    html += '<div style="font-size:12px;color:var(--muted);margin-top:4px">';
-    html += 'Meta: <strong>' + fmtKg(o.target_kg) + ' kg</strong>';
-    if (binObjs.length) html += ' · ' + binObjs.length + ' bins · <strong>' + fmtKg(assignedKg) + ' kg</strong> asignados';
+    // Two kg numbers
+    html += '<div class="kg-row">';
+    html += '<div class="kg-box"><div class="lbl">Pedido (terminado)</div><div class="val">'+fmtKg(o.target_kg)+' kg</div></div>';
+    html += '<div class="kg-box mp"><div class="lbl">Materia prima necesaria (bins)</div><div class="val">'+fmtKg(mpNeeded)+' kg · rend. '+Math.round(yr*100)+'%</div></div>';
     html += '</div>';
 
-    // ── Assign panel ──
-    if (isAssigning) {
-      html += buildAssignPanel(o);
+    // If bins are assigned, show progress
+    if (binObjs.length) {
+      var pct = Math.min(100, Math.round(assignedKg / mpNeeded * 100));
+      html += '<div class="progress-wrap">';
+      html += '<div class="progress-bar"><div class="progress-fill'+(pct>=100?' over':'')+'" style="width:'+pct+'%"></div></div>';
+      html += '<div style="font-size:12px;margin-top:4px;color:var(--muted)">'+binObjs.length+' bins asignados · <strong>'+fmtKg(assignedKg)+' kg</strong> de '+fmtKg(mpNeeded)+' kg necesarios ('+pct+'%)</div>';
+      html += '</div>';
     }
 
-    // ── Show assigned bins (read-only after assignment) ──
+    // Assign panel
+    if (isAssigning) { html += buildAssignPanel(o, yr, mpNeeded); }
+
+    // Assigned bin chips (read-only)
     if (o.bin_tarjas.length && !isAssigning) {
       html += '<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:5px">';
-      o.bin_tarjas.forEach(function(t) {
-        html += '<span class="tag-tarja" onclick="SIM.openModal(\'bin\',\'' + t + '\')">' + t + '</span>';
+      o.bin_tarjas.forEach(function(t){
+        html += '<span class="tag-tarja" onclick="SIM.openModal(\'bin\',\''+t+'\')">'+t+'</span>';
       });
       html += '</div>';
     }
 
-    html += '</div>'; // line-card
+    html += '</div>';
   });
-
   el('ordenes-container').innerHTML = html;
 }
 
-function buildAssignPanel(order) {
-  var avail = bins.filter(function(b){ return b.status === 'bodega'; });
-  var selCount = 0, selKg = 0;
-  avail.forEach(function(b){ if(selectedBins[b.tarja]){ selCount++; selKg += b.weight_kg; } });
+function buildAssignPanel(order, yr, mpNeeded) {
+  // Only show bins matching BOTH caliber AND drying of the order
+  var matching = bins.filter(function(b){
+    return b.status==='bodega' && b.caliber===order.caliber && b.drying===order.drying;
+  });
+  var selCount=0, selKg=0;
+  matching.forEach(function(b){ if(selectedBins[b.tarja]){selCount++;selKg+=b.weight_kg;} });
 
   var html = '<div class="assign-panel">';
-  html += '<h3 style="margin:0 0 10px">Seleccioná los bins — OT ' + order.ot + ' (' + order.caliber + ')</h3>';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
+  html += '<h3 style="margin:0">Bins disponibles para OT '+order.ot+'</h3>';
+  html += '<span style="font-size:12px;color:var(--muted)">Filtro automático: calibre <strong>'+order.caliber+'</strong> · secado <strong>'+DRY_LABEL[order.drying]+'</strong></span>';
+  html += '</div>';
 
   // Sticky sel-bar
+  var pct = mpNeeded>0 ? Math.min(100,Math.round(selKg/mpNeeded*100)) : 0;
   html += '<div class="sel-bar">';
-  html += '<span style="font-size:13px"><strong>' + selCount + '</strong> bins seleccionados · <strong>' + fmtKg(selKg) + '</strong> kg</span>';
+  html += '<div>';
+  html += '<strong>'+selCount+'</strong> bins · <strong>'+fmtKg(selKg)+'</strong> kg seleccionados';
+  html += ' <span style="color:var(--muted);font-size:12px">(necesitás '+fmtKg(mpNeeded)+' kg → '+pct+'% cubierto)</span>';
+  html += '</div>';
   html += '<div style="display:flex;gap:8px">';
   html += '<button class="btn btn-ghost" style="font-size:12px" onclick="SIM.cancelAssign()">Cancelar</button>';
-  if (selCount > 0) {
-    html += '<button class="btn btn-primary" style="font-size:12px" onclick="SIM.confirmAssign(' + order.id + ')">';
-    html += 'Confirmar asignación (' + selCount + ' bins · ' + fmtKg(selKg) + ' kg)</button>';
+  if (selCount>0) {
+    html += '<button class="btn btn-primary" style="font-size:12px" onclick="SIM.confirmAssign('+order.id+')">';
+    html += 'Confirmar ('+selCount+' bins · '+fmtKg(selKg)+' kg)</button>';
   } else {
-    html += '<button class="btn btn-primary" style="font-size:12px;opacity:.5" disabled>Confirmar asignación</button>';
+    html += '<button class="btn btn-primary" style="font-size:12px;opacity:.45" disabled>Confirmar asignación</button>';
   }
   html += '</div></div>';
 
-  // Bin table
-  if (!avail.length) {
-    html += '<div class="empty" style="padding:20px"><p>No hay bins disponibles en bodega.</p></div>';
+  if (!matching.length) {
+    html += '<div class="empty" style="padding:20px"><p>No hay bins en bodega con calibre <strong>'+order.caliber+'</strong> y secado <strong>'+DRY_LABEL[order.drying]+'</strong>.</p></div>';
   } else {
-    var allChecked = avail.length > 0 && avail.every(function(b){ return selectedBins[b.tarja]; });
+    var allChk = matching.every(function(b){ return selectedBins[b.tarja]; });
     html += '<table class="grid tight" style="margin:0"><thead><tr>';
-    html += '<th><input type="checkbox"' + (allChecked?' checked':'') + ' onchange="SIM.toggleAll(this.checked)"></th>';
+    html += '<th><input type="checkbox"'+(allChk?' checked':'')+' onchange="SIM.toggleAll(this.checked,\''+order.id+'\')"></th>';
     html += '<th>Tarja</th><th>Calibre</th><th>Secado</th><th>Productor</th><th class="num">kg</th>';
     html += '</tr></thead><tbody>';
-    avail.forEach(function(b) {
-      var chk = selectedBins[b.tarja] ? ' checked' : '';
-      var highlight = b.caliber === order.caliber ? ' style="background:var(--lavender-l)"' : '';
-      html += '<tr' + highlight + '>';
-      html += '<td><input type="checkbox"' + chk + ' onchange="SIM.toggleBin(\'' + b.tarja + '\',this.checked)"></td>';
-      html += '<td class="mono">' + b.tarja + '</td>';
-      html += '<td>' + b.caliber + (b.caliber === order.caliber ? ' <span style="color:var(--purple);font-size:10px;font-weight:700">✓</span>' : '') + '</td>';
-      html += '<td>' + dryPill(b.drying) + '</td>';
-      html += '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + b.producer + '</td>';
-      html += '<td class="num">' + fmtKg(b.weight_kg) + '</td>';
+    matching.forEach(function(b){
+      var chk = selectedBins[b.tarja]?' checked':'';
+      html += '<tr>';
+      html += '<td><input type="checkbox"'+chk+' onchange="SIM.toggleBin(\''+b.tarja+'\',this.checked)"></td>';
+      html += '<td class="mono">'+b.tarja+'</td>';
+      html += '<td>'+b.caliber+'</td>';
+      html += '<td>'+dryPill(b.drying)+'</td>';
+      html += '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+b.producer+'</td>';
+      html += '<td class="num">'+fmtKg(b.weight_kg)+'</td>';
       html += '</tr>';
     });
     html += '</tbody></table>';
@@ -495,42 +561,35 @@ function buildAssignPanel(order) {
 
 // ════════════════════════════ RENDER PROCESOS ════════════════════════════════
 function renderProcesos() {
-  var inProc = orders.filter(function(o){ return o.status === 'en_proceso'; });
-  var cont   = el('procesos-container');
-  var empty  = el('procesos-empty');
-
-  if (!inProc.length) { cont.innerHTML = ''; empty.style.display = ''; return; }
-  empty.style.display = 'none';
-
+  var inProc = orders.filter(function(o){ return o.status==='en_proceso'; });
+  var cont = el('procesos-container'), empty = el('procesos-empty');
+  if (!inProc.length){ cont.innerHTML=''; empty.style.display=''; return; }
+  empty.style.display='none';
   var html = '';
-  inProc.forEach(function(o) {
-    var binObjs  = o.bin_tarjas.map(findBin).filter(Boolean);
-    var totalIn  = binObjs.reduce(function(s,b){ return s+b.weight_kg; }, 0);
-    var yr       = getYield(o.tipo, o.caliber);
-    var netoEst  = Math.round(totalIn * yr);
+  inProc.forEach(function(o){
+    var binObjs = o.bin_tarjas.map(findBin).filter(Boolean);
+    var totalIn = binObjs.reduce(function(s,b){return s+b.weight_kg;},0);
+    var yr      = getYield(o.tipo, o.caliber);
+    var netoEst = Math.round(totalIn * yr);
 
     html += '<div class="line-card" style="margin:0 0 12px">';
-    html += '<div class="line-head">';
-    html += '<div>';
-    html += '<span class="spec-main">OT ' + o.ot + ' — ' + o.client + '</span>';
-    html += '<span class="spec-sub" style="display:block;margin-top:2px">' + TIPO_LABEL[o.tipo] + ' · ' + o.caliber + ' · Asignado ' + (o.assigned_at||'') + '</span>';
-    html += '</div>';
-    html += '<div style="display:flex;gap:8px;align-items:center">';
+    html += '<div class="line-head"><div>';
+    html += '<span class="spec-main">OT '+o.ot+' — '+o.client+'</span>';
+    html += '<span class="spec-sub" style="display:block;margin-top:2px">'+TIPO_LABEL[o.tipo]+' · '+o.caliber+' · Secado: '+DRY_LABEL[o.drying]+' · Asignado: '+(o.assigned_at||'')+'</span>';
+    html += '</div><div style="display:flex;gap:8px;align-items:center">';
     html += ordBadge(o.status);
-    html += '<button class="btn btn-sync" style="font-size:12px;padding:6px 12px" onclick="SIM.procesarOT(\'' + o.ot + '\')">';
+    html += '<button class="btn btn-sync" style="font-size:12px;padding:6px 12px" onclick="SIM.procesarOT(\''+o.ot+'\')">';
     html += '✓ Marcar como procesado</button>';
-    html += '</div></div>'; // line-head
+    html += '</div></div>';
 
-    html += '<div style="font-size:12px;margin:8px 0 10px">';
-    html += '<strong>' + binObjs.length + ' bins</strong> · Entrada: <strong>' + fmtKg(totalIn) + ' kg</strong>';
-    html += ' → Rendimiento ' + TIPO_LABEL[o.tipo] + ' ' + o.caliber + ': <strong>' + Math.round(yr*100) + '%</strong>';
-    html += ' → Neto estimado: <strong>' + fmtKg(netoEst) + ' kg</strong>';
+    html += '<div class="kg-row">';
+    html += '<div class="kg-box"><div class="lbl">Entrada (bins)</div><div class="val">'+fmtKg(totalIn)+' kg</div></div>';
+    html += '<div class="kg-box mp"><div class="lbl">Neto estimado ('+Math.round(yr*100)+'% rend.)</div><div class="val">'+fmtKg(netoEst)+' kg</div></div>';
     html += '</div>';
 
-    // Bin chips
-    html += '<div style="display:flex;flex-wrap:wrap;gap:5px">';
+    html += '<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:5px">';
     o.bin_tarjas.forEach(function(t){
-      html += '<span class="tag-tarja" onclick="SIM.openModal(\'bin\',\'' + t + '\')">' + t + '</span>';
+      html += '<span class="tag-tarja" onclick="SIM.openModal(\'bin\',\''+t+'\')">'+t+'</span>';
     });
     html += '</div></div>';
   });
@@ -539,307 +598,202 @@ function renderProcesos() {
 
 // ════════════════════════════ RENDER PALLETS ═════════════════════════════════
 function renderPallets() {
-  var avail   = pallets.filter(function(p){ return p.status === 'disponible'; });
-  var totalKg = avail.reduce(function(s,p){ return s+p.weight_kg; }, 0);
+  var avail   = pallets.filter(function(p){ return p.status==='disponible'; });
+  var totalKg = avail.reduce(function(s,p){return s+p.weight_kg;},0);
   el('s-pal-count').textContent = avail.length;
-  el('s-pal-kg').textContent    = fmtKg(totalKg) + ' kg';
-
-  var tbl   = el('tbl-pallets');
-  var empty = el('pallets-empty');
-  var tbody = el('tb-pallets');
-  tbody.innerHTML = '';
-
-  if (!avail.length) { tbl.style.display='none'; empty.style.display=''; return; }
-  tbl.style.display = ''; empty.style.display = 'none';
-
-  avail.forEach(function(p) {
-    var ord = findOrderOT(p.ot) || {};
-    var tr  = document.createElement('tr');
+  el('s-pal-kg').textContent    = fmtKg(totalKg)+' kg';
+  var tbl=el('tbl-pallets'), empty=el('pallets-empty'), tbody=el('tb-pallets');
+  tbody.innerHTML='';
+  if (!avail.length){ tbl.style.display='none'; empty.style.display=''; return; }
+  tbl.style.display=''; empty.style.display='none';
+  avail.forEach(function(p){
+    var ord=findOrderOT(p.ot)||{};
+    var tr=document.createElement('tr');
     tr.innerHTML =
-      '<td class="mono" style="cursor:pointer;color:var(--purple)" title="Ver trazabilidad" onclick="SIM.openModal(\'pallet\',\'' + p.tarja + '\')">' + p.tarja + '</td>' +
-      '<td class="mono">' + p.ot + '</td>' +
-      '<td>' + (ord.client||'—') + '</td>' +
-      '<td>' + p.caliber + '</td>' +
-      '<td class="num">' + fmtKg(p.weight_kg) + '</td>' +
-      '<td class="num">' + p.bin_tarjas.length + '</td>' +
-      '<td><button class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="SIM.despacharPallet(\'' + p.tarja + '\')">Despachar</button></td>';
+      '<td class="mono" style="cursor:pointer;color:var(--purple)" title="Ver trazabilidad" onclick="SIM.openModal(\'pallet\',\''+p.tarja+'\')">'+p.tarja+'</td>'+
+      '<td class="mono">'+p.ot+'</td>'+
+      '<td>'+(ord.client||'—')+'</td>'+
+      '<td>'+p.caliber+'</td>'+
+      '<td class="num">'+fmtKg(p.weight_kg)+'</td>'+
+      '<td class="num">'+p.bin_tarjas.length+'</td>'+
+      '<td><button class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="SIM.despacharPallet(\''+p.tarja+'\')">Despachar</button></td>';
     tbody.appendChild(tr);
   });
 }
 
-// ═════════════════════════════ RENDER DESPACHO ════════════════════════════════
+// ════════════════════════════ RENDER DESPACHO ════════════════════════════════
 function renderDespacho() {
-  var disp  = pallets.filter(function(p){ return p.status === 'despachado'; });
-  var tbl   = el('tbl-despacho');
-  var empty = el('despacho-empty');
-  var tbody = el('tb-despacho');
-  tbody.innerHTML = '';
-
-  if (!disp.length) { tbl.style.display='none'; empty.style.display=''; return; }
-  tbl.style.display = ''; empty.style.display = 'none';
-
-  disp.forEach(function(p) {
-    var ord = findOrderOT(p.ot) || {};
-    var tr  = document.createElement('tr');
-    tr.style.cursor = 'pointer';
-    tr.title = 'Ver trazabilidad';
+  var disp=pallets.filter(function(p){return p.status==='despachado';});
+  var tbl=el('tbl-despacho'), empty=el('despacho-empty'), tbody=el('tb-despacho');
+  tbody.innerHTML='';
+  if (!disp.length){ tbl.style.display='none'; empty.style.display=''; return; }
+  tbl.style.display=''; empty.style.display='none';
+  disp.forEach(function(p){
+    var ord=findOrderOT(p.ot)||{};
+    var tr=document.createElement('tr');
+    tr.style.cursor='pointer'; tr.title='Ver trazabilidad';
     tr.innerHTML =
-      '<td class="mono">' + p.tarja + '</td>' +
-      '<td class="mono">' + p.ot + '</td>' +
-      '<td>' + (ord.client||'—') + '</td>' +
-      '<td>' + p.caliber + '</td>' +
-      '<td class="num">' + fmtKg(p.weight_kg) + '</td>' +
-      '<td>' + (p.dispatched_at||'—') + '</td>';
+      '<td class="mono">'+p.tarja+'</td>'+
+      '<td class="mono">'+p.ot+'</td>'+
+      '<td>'+(ord.client||'—')+'</td>'+
+      '<td>'+p.caliber+'</td>'+
+      '<td class="num">'+fmtKg(p.weight_kg)+'</td>'+
+      '<td>'+(p.dispatched_at||'—')+'</td>';
     tr.addEventListener('click', function(){ openModal('pallet', p.tarja); });
     tbody.appendChild(tr);
   });
 }
 
 // ════════════════════════════════ ACTIONS ════════════════════════════════════
-
-// Start assigning bins to an order
 function startAssign(orderId) {
   assigningOrderId = orderId;
   selectedBins = {};
   showTab('ordenes');
 }
-
 function cancelAssign() {
-  assigningOrderId = null;
-  selectedBins = {};
+  assigningOrderId = null; selectedBins = {};
   renderOrdenes();
 }
-
 function toggleBin(tarja, checked) {
-  if (checked) selectedBins[tarja] = true;
-  else delete selectedBins[tarja];
+  if (checked) selectedBins[tarja]=true; else delete selectedBins[tarja];
   renderOrdenes();
 }
-
-function toggleAll(checked) {
-  bins.filter(function(b){ return b.status === 'bodega'; }).forEach(function(b){
-    if (checked) selectedBins[b.tarja] = true;
-    else delete selectedBins[b.tarja];
+function toggleAll(checked, orderId) {
+  var order = findOrder(parseInt(orderId, 10));
+  if (!order) return;
+  bins.filter(function(b){
+    return b.status==='bodega' && b.caliber===order.caliber && b.drying===order.drying;
+  }).forEach(function(b){
+    if (checked) selectedBins[b.tarja]=true; else delete selectedBins[b.tarja];
   });
   renderOrdenes();
 }
 
-// Confirm bin assignment: bins leave Bodega immediately, order → en_proceso
 function confirmAssign(orderId) {
-  var order   = findOrder(orderId);
+  var order    = findOrder(orderId);
   var toAssign = Object.keys(selectedBins);
-  if (!order || !toAssign.length) {
-    alert('Seleccioná al menos un bin antes de confirmar.');
-    return;
-  }
-
+  if (!order||!toAssign.length){ alert('Seleccioná al menos un bin.'); return; }
   tick(2);
   var ts = simNow();
-
-  toAssign.forEach(function(tarja) {
-    var b = findBin(tarja);
-    if (!b) return;
-    b.status      = 'en_proceso';
-    b.assigned_ot = order.ot;
-    b.assigned_at = ts;
+  toAssign.forEach(function(t){
+    var b=findBin(t); if(!b) return;
+    b.status='en_proceso'; b.assigned_ot=order.ot; b.assigned_at=ts;
   });
-
-  order.bin_tarjas  = toAssign.slice();
-  order.status      = 'en_proceso';
-  order.assigned_at = ts;
-
-  assigningOrderId = null;
-  selectedBins = {};
-
-  updateBadges();
-  showTab('ordenes');
+  order.bin_tarjas=toAssign.slice(); order.status='en_proceso'; order.assigned_at=ts;
+  assigningOrderId=null; selectedBins={};
+  updateBadges(); showTab('ordenes');
 }
 
-// Mark OT as processed: bins → en_pallet, pallets created, order → procesado
 function procesarOT(ot) {
-  var order = findOrderOT(ot);
-  if (!order) return;
+  var order=findOrderOT(ot); if(!order) return;
+  tick(ri(12,25));
+  var ts=simNow();
+  var binObjs=order.bin_tarjas.map(findBin).filter(Boolean);
+  var totalIn=binObjs.reduce(function(s,b){return s+b.weight_kg;},0);
+  var yr=getYield(order.tipo,order.caliber);
+  var netoKg=Math.round(totalIn*yr);
+  order.status='procesado'; order.processed_at=ts;
+  binObjs.forEach(function(b){ b.processed_at=ts; });
 
-  tick(ri(12, 25));
-  var ts = simNow();
-
-  var binObjs  = order.bin_tarjas.map(findBin).filter(Boolean);
-  var totalIn  = binObjs.reduce(function(s,b){ return s+b.weight_kg; }, 0);
-  var yr       = getYield(order.tipo, order.caliber);
-  var netoKg   = Math.round(totalIn * yr);
-
-  order.status      = 'procesado';
-  order.processed_at = ts;
-
-  // Mark bins as palletised
-  binObjs.forEach(function(b){ b.processed_at = ts; });
-
-  // Create pallets (~750 kg each)
-  var remaining    = netoKg;
-  var palletTarjas = [];
-  while (remaining > 0) {
-    var palKg  = Math.min(ri(700, 825), remaining);
-    var ptarja = newPalletTarja();
-    pallets.push({
-      tarja:         ptarja,
-      ot:            ot,
-      caliber:       order.caliber,
-      weight_kg:     palKg,
-      bin_tarjas:    order.bin_tarjas.slice(),
-      status:        'disponible',
-      created_at:    ts,
-      dispatched_at: null
-    });
-    palletTarjas.push(ptarja);
-    remaining -= palKg;
+  var remaining=netoKg, palletTarjas=[];
+  while (remaining>0) {
+    var palKg=Math.min(ri(700,825),remaining);
+    var pt=newPalletTarja();
+    pallets.push({ tarja:pt, ot:ot, caliber:order.caliber, weight_kg:palKg,
+                   bin_tarjas:order.bin_tarjas.slice(), status:'disponible',
+                   created_at:ts, dispatched_at:null });
+    palletTarjas.push(pt); remaining-=palKg;
   }
-
-  // Link pallet back to each bin (first pallet = primary traceability link)
-  binObjs.forEach(function(b){
-    b.status       = 'en_pallet';
-    b.pallet_tarja = palletTarjas[0] || null;
-  });
-
-  updateBadges();
-  showTab('pallets');
+  binObjs.forEach(function(b){ b.status='en_pallet'; b.pallet_tarja=palletTarjas[0]||null; });
+  updateBadges(); showTab('pallets');
 }
 
-// Dispatch pallet
 function despacharPallet(tarja) {
-  var p = findPallet(tarja);
-  if (!p) return;
-
-  tick(ri(3, 8));
-  var ts = simNow();
-  p.status        = 'despachado';
-  p.dispatched_at = ts;
-
-  // Mark source bins dispatched
+  var p=findPallet(tarja); if(!p) return;
+  tick(ri(3,8)); var ts=simNow();
+  p.status='despachado'; p.dispatched_at=ts;
   p.bin_tarjas.forEach(function(t){
-    var b = findBin(t);
-    if (b) { b.status = 'despachado'; b.dispatched_at = ts; }
+    var b=findBin(t); if(b){b.status='despachado';b.dispatched_at=ts;}
   });
-
-  // If all pallets for an order are dispatched, update order status
-  var ord = findOrderOT(p.ot);
-  if (ord) {
-    var ordPallets = pallets.filter(function(x){ return x.ot === p.ot; });
-    if (ordPallets.every(function(x){ return x.status === 'despachado'; })) {
-      ord.status = 'despachado';
-    }
+  var ord=findOrderOT(p.ot);
+  if (ord&&pallets.filter(function(x){return x.ot===p.ot;}).every(function(x){return x.status==='despachado';})){
+    ord.status='despachado';
   }
-
-  updateBadges();
-  showTab('despacho');
+  updateBadges(); showTab('despacho');
 }
 
-// ════════════════════════════ TRACEABILITY MODAL ════════════════════════════
+// ═══════════════════════════════ MODAL ═══════════════════════════════════════
 function stepHTML(done, title, detail) {
-  return '<div class="step">' +
-    '<div class="step-ic ' + (done ? 'done' : 'pend') + '">' + (done ? '✓' : '○') + '</div>' +
-    '<div><div class="step-title">' + title + '</div>' +
-    '<div class="step-detail">' + (detail||'') + '</div></div></div>';
+  return '<div class="step">'+
+    '<div class="step-ic '+(done?'done':'pend')+'">'+(done?'✓':'○')+'</div>'+
+    '<div><div class="step-title">'+title+'</div>'+
+    '<div class="step-detail">'+(detail||'')+'</div></div></div>';
 }
 
 function openModal(type, id) {
-  var title = el('modal-title');
-  var sub   = el('modal-sub');
-  var body  = el('modal-body');
-  var html  = '';
-
-  if (type === 'bin') {
-    var b = findBin(id);
-    if (!b) return;
-    title.textContent = 'Bin ' + b.tarja;
-    sub.textContent   = b.producer + ' · ' + b.caliber + ' · ' + (DRY_LABEL[b.drying]||b.drying) + ' · ' + fmtKg(b.weight_kg) + ' kg · Temp. ' + b.temporada;
-
-    html += '<div class="stepper">';
-    // 1. Recepción
-    html += stepHTML(true, '① Recepción en Bodega',
-      'Tarja: <span class="mono">' + b.tarja + '</span><br>Recibido: ' + b.received_at);
-
-    // 2. Asignación a OT
+  var html='';
+  if (type==='bin') {
+    var b=findBin(id); if(!b) return;
+    el('modal-title').textContent='Bin '+b.tarja;
+    el('modal-sub').textContent=b.producer+' · '+b.caliber+' · '+(DRY_LABEL[b.drying]||b.drying)+' · '+fmtKg(b.weight_kg)+' kg · Temp. '+b.temporada;
+    html='<div class="stepper">';
+    html+=stepHTML(true,'① Recepción en Bodega','Tarja: <span class="mono">'+b.tarja+'</span><br>Recibido: '+b.received_at);
     if (b.assigned_ot) {
-      var ord = findOrderOT(b.assigned_ot) || {};
-      html += stepHTML(true, '② Asignado a OT',
-        'OT: <span class="mono">' + b.assigned_ot + '</span> · ' + (ord.client||'') +
-        '<br>Tipo: ' + TIPO_LABEL[ord.tipo||'cn'] + ' · Calibre ' + (ord.caliber||'') +
-        '<br>Confirmado: ' + b.assigned_at);
+      var ord=findOrderOT(b.assigned_ot)||{};
+      html+=stepHTML(true,'② Asignado a OT',
+        'OT: <span class="mono">'+b.assigned_ot+'</span> · '+( ord.client||'')+
+        '<br>Tipo: '+TIPO_LABEL[ord.tipo||'cn']+' · Calibre '+(ord.caliber||'')+' · '+(DRY_LABEL[ord.drying]||'')+
+        '<br>Confirmado: '+b.assigned_at);
     } else {
-      html += stepHTML(false, '② Asignación a OT', 'Pendiente — asignalo desde Órdenes de Venta');
+      html+=stepHTML(false,'② Asignación a OT','Pendiente — asignalo desde Órdenes de Venta');
     }
-
-    // 3. Proceso
     if (b.processed_at) {
-      html += stepHTML(true, '③ Procesado', 'Completado: ' + b.processed_at);
+      html+=stepHTML(true,'③ Procesado','Completado: '+b.processed_at);
     } else {
-      html += stepHTML(false, '③ En Proceso', b.assigned_ot ? 'Esperando procesamiento' : 'Pendiente');
+      html+=stepHTML(false,'③ En Proceso',b.assigned_ot?'Esperando procesamiento':'Pendiente');
     }
-
-    // 4. Pallet
     if (b.pallet_tarja) {
-      var pal = findPallet(b.pallet_tarja) || {};
-      html += stepHTML(true, '④ Pallet generado',
-        'Tarja pallet: <span class="mono">' + b.pallet_tarja + '</span>' +
-        '<br>Peso pallet: ' + fmtKg(pal.weight_kg) + ' kg' +
-        '<br>Generado: ' + (pal.created_at||''));
+      var pal=findPallet(b.pallet_tarja)||{};
+      html+=stepHTML(true,'④ Pallet generado',
+        'Tarja pallet: <span class="mono">'+b.pallet_tarja+'</span><br>Peso: '+fmtKg(pal.weight_kg)+' kg<br>Generado: '+(pal.created_at||''));
     } else {
-      html += stepHTML(false, '④ Pallet generado', 'Pendiente');
+      html+=stepHTML(false,'④ Pallet generado','Pendiente');
     }
-
-    // 5. Despacho
-    if (b.dispatched_at) {
-      html += stepHTML(true, '⑤ Despachado', 'Fecha: ' + b.dispatched_at);
-    } else {
-      html += stepHTML(false, '⑤ Despacho', 'Pendiente');
-    }
-    html += '</div>';
+    html+=stepHTML(!!b.dispatched_at,'⑤ Despacho',b.dispatched_at?'Fecha: '+b.dispatched_at:'Pendiente');
+    html+='</div>';
   }
 
-  if (type === 'pallet') {
-    var p = findPallet(id);
-    if (!p) return;
-    var ord2 = findOrderOT(p.ot) || {};
-    title.textContent = 'Pallet ' + p.tarja;
-    sub.textContent   = 'OT ' + p.ot + ' · ' + (ord2.client||'') + ' · ' + p.caliber + ' · ' + fmtKg(p.weight_kg) + ' kg';
-
-    html += '<div class="stepper">';
-    html += stepHTML(true, '① OT de origen',
-      'OT: <span class="mono">' + p.ot + '</span> · ' + (ord2.client||'') +
-      '<br>Tipo: ' + TIPO_LABEL[ord2.tipo||'cn'] + ' · ' + p.caliber +
-      '<br>' + p.bin_tarjas.length + ' bins de origen');
-    html += stepHTML(true, '② Producción completada', 'Generado: ' + p.created_at);
-    if (p.status === 'despachado') {
-      html += stepHTML(true, '③ Despachado', 'Fecha: ' + p.dispatched_at);
-    } else {
-      html += stepHTML(false, '③ Despacho', 'Pendiente — usá el botón Despachar en Pallets en Bodega');
-    }
-    html += '</div>';
-
-    html += '<hr style="border:none;border-top:1px solid var(--line);margin:14px 0">';
-    html += '<p style="font-size:12px;font-weight:700;margin:0 0 8px">Bins de origen (' + p.bin_tarjas.length + '):</p>';
-    html += '<div style="display:flex;flex-wrap:wrap;gap:5px">';
+  if (type==='pallet') {
+    var p=findPallet(id); if(!p) return;
+    var ord2=findOrderOT(p.ot)||{};
+    el('modal-title').textContent='Pallet '+p.tarja;
+    el('modal-sub').textContent='OT '+p.ot+' · '+(ord2.client||'')+' · '+p.caliber+' · '+fmtKg(p.weight_kg)+' kg';
+    html='<div class="stepper">';
+    html+=stepHTML(true,'① OT de origen',
+      'OT: <span class="mono">'+p.ot+'</span> · '+(ord2.client||'')+
+      '<br>'+TIPO_LABEL[ord2.tipo||'cn']+' · '+p.caliber+' · '+(DRY_LABEL[ord2.drying]||'')+
+      '<br>'+p.bin_tarjas.length+' bins de origen');
+    html+=stepHTML(true,'② Producción completada','Generado: '+p.created_at);
+    html+=stepHTML(p.status==='despachado','③ Despacho',p.dispatched_at?'Fecha: '+p.dispatched_at:'Pendiente — usá el botón Despachar');
+    html+='</div>';
+    html+='<hr style="border:none;border-top:1px solid var(--line);margin:14px 0">';
+    html+='<p style="font-size:12px;font-weight:700;margin:0 0 8px">Bins de origen ('+p.bin_tarjas.length+'):</p>';
+    html+='<div style="display:flex;flex-wrap:wrap;gap:5px">';
     p.bin_tarjas.forEach(function(t){
-      html += '<span class="tag-tarja" onclick="SIM.closeModal();setTimeout(function(){SIM.openModal(\'bin\',\'' + t + '\')},80)">' + t + '</span>';
+      html+='<span class="tag-tarja" onclick="SIM.closeModal();setTimeout(function(){SIM.openModal(\'bin\',\''+t+'\')},80)">'+t+'</span>';
     });
-    html += '</div>';
+    html+='</div>';
   }
-
-  body.innerHTML = html;
+  el('modal-body').innerHTML=html;
   el('modal-overlay').classList.add('open');
 }
-
-function closeModal() {
-  el('modal-overlay').classList.remove('open');
-}
+function closeModal(){ el('modal-overlay').classList.remove('open'); }
 
 // ════════════════════════════════ RESET ══════════════════════════════════════
 function reset() {
-  buildData();
-  activeTab = 'bins';
-  // Clear filters if on bins tab
-  var fc = el('f-cal'); if (fc) fc.value = '';
-  var fd = el('f-dry'); if (fd) fd.value = '';
+  buildData(); activeTab='bins';
+  var fc=el('f-cal'); if(fc) fc.value='';
+  var fd=el('f-dry'); if(fd) fd.value='';
   showTab('bins');
 }
 
@@ -848,20 +802,13 @@ buildData();
 showTab('bins');
 
 return {
-  showTab:         showTab,
-  renderBins:      renderBins,
-  startAssign:     startAssign,
-  cancelAssign:    cancelAssign,
-  toggleBin:       toggleBin,
-  toggleAll:       toggleAll,
-  confirmAssign:   confirmAssign,
-  procesarOT:      procesarOT,
-  despacharPallet: despacharPallet,
-  openModal:       openModal,
-  closeModal:      closeModal,
-  reset:           reset
+  showTab:showTab, renderBins:renderBins,
+  startAssign:startAssign, cancelAssign:cancelAssign,
+  toggleBin:toggleBin, toggleAll:toggleAll,
+  confirmAssign:confirmAssign, procesarOT:procesarOT,
+  despacharPallet:despacharPallet, openModal:openModal,
+  closeModal:closeModal, reset:reset
 };
-
 })();
 </script>
 {% endblock %}
