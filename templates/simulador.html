@@ -144,13 +144,8 @@
       <div class="big" id="s-pal-kg">—</div><div class="lbl">kg totales</div>
     </div>
   </div>
-  <p class="muted" style="font-size:12px;margin:0 0 6px">Hacé clic en una tarja para ver la trazabilidad completa.</p>
-  <table class="grid tight" id="tbl-pallets" style="display:none">
-    <thead><tr>
-      <th>Tarja</th><th>OT</th><th>Cliente</th><th>Calibre</th><th class="num">kg</th><th class="num">Bins origen</th><th></th>
-    </tr></thead>
-    <tbody id="tb-pallets"></tbody>
-  </table>
+  <p class="muted" style="font-size:12px;margin:0 0 10px">Las órdenes se muestran agrupadas. Hacé clic en la tarja de un pallet o en un bin para ver trazabilidad completa.</p>
+  <div id="pallets-container"></div>
   <div class="empty" id="pallets-empty">
     <p>No hay pallets en bodega.</p>
     <p class="muted" style="margin-top:6px">Procesá una OT en <strong>Procesos</strong>.</p>
@@ -159,14 +154,9 @@
 
 <!-- DESPACHO -->
 <div class="sim-panel" id="panel-despacho">
-  <table class="grid tight" id="tbl-despacho" style="display:none">
-    <thead><tr>
-      <th>Tarja</th><th>OT</th><th>Cliente</th><th>Calibre</th><th class="num">kg</th><th>Fecha despacho</th>
-    </tr></thead>
-    <tbody id="tb-despacho"></tbody>
-  </table>
+  <div id="despacho-container"></div>
   <div class="empty" id="despacho-empty">
-    <p>No hay pallets despachados todavía.</p>
+    <p>No hay órdenes despachadas todavía.</p>
     <p class="muted" style="margin-top:6px">Despachá desde <strong>Pallets en Bodega</strong>.</p>
   </div>
 </div>
@@ -300,15 +290,16 @@ function buildData() {
   ORDER_DEFS.forEach(function(def) {
     var yr        = getYield(def.tipo, def.caliber);
     var rawNeeded = def.target_kg / yr;
-    var numBins   = Math.ceil(rawNeeded / 370) + 2; // 2 extra so order is clearly fulfillable
+    // Target ~200 kg extra finished product (surplus), so raw = rawNeeded + 200/yr
+    var rawTarget = rawNeeded + Math.round(200 / yr);
+    var numBins   = Math.ceil(rawTarget / 380);
     var group     = [];
     for (var i = 0; i < numBins; i++) {
       recvOffset += ri(3, 14);
       var rd  = new Date(RECV_BASE.getTime() + recvOffset * 3600000);
       var rec = rd.getDate().toString().padStart(2,'0') + '-' +
                 (rd.getMonth()+1).toString().padStart(2,'0') + '-' + rd.getFullYear();
-      // Weight: distribute so total just exceeds rawNeeded
-      var wt = Math.round(rawNeeded / numBins * ri(90, 110) / 100);
+      var wt = Math.round(rawTarget / numBins * ri(92, 108) / 100);
       wt = Math.max(260, Math.min(580, wt));
       group.push({
         tarja:        newBinTarja(),
@@ -602,46 +593,117 @@ function renderPallets() {
   var totalKg = avail.reduce(function(s,p){return s+p.weight_kg;},0);
   el('s-pal-count').textContent = avail.length;
   el('s-pal-kg').textContent    = fmtKg(totalKg)+' kg';
-  var tbl=el('tbl-pallets'), empty=el('pallets-empty'), tbody=el('tb-pallets');
-  tbody.innerHTML='';
-  if (!avail.length){ tbl.style.display='none'; empty.style.display=''; return; }
-  tbl.style.display=''; empty.style.display='none';
-  avail.forEach(function(p){
-    var ord=findOrderOT(p.ot)||{};
-    var tr=document.createElement('tr');
-    tr.innerHTML =
-      '<td class="mono" style="cursor:pointer;color:var(--purple)" title="Ver trazabilidad" onclick="SIM.openModal(\'pallet\',\''+p.tarja+'\')">'+p.tarja+'</td>'+
-      '<td class="mono">'+p.ot+'</td>'+
-      '<td>'+(ord.client||'—')+'</td>'+
-      '<td>'+p.caliber+'</td>'+
-      '<td class="num">'+fmtKg(p.weight_kg)+'</td>'+
-      '<td class="num">'+p.bin_tarjas.length+'</td>'+
-      '<td><button class="btn btn-primary" style="font-size:11px;padding:4px 10px" onclick="SIM.despacharPallet(\''+p.tarja+'\')">Despachar</button></td>';
-    tbody.appendChild(tr);
+
+  var cont  = el('pallets-container');
+  var empty = el('pallets-empty');
+  if (!avail.length){ cont.innerHTML=''; empty.style.display=''; return; }
+  empty.style.display='none';
+
+  // Group by OT
+  var otsSeen = [];
+  avail.forEach(function(p){ if(otsSeen.indexOf(p.ot)===-1) otsSeen.push(p.ot); });
+
+  var html='';
+  otsSeen.forEach(function(ot){
+    var ord      = findOrderOT(ot)||{};
+    var ordPals  = avail.filter(function(p){return p.ot===ot;});
+    var palKgSum = ordPals.reduce(function(s,p){return s+p.weight_kg;},0);
+    var surp     = palKgSum - (ord.target_kg||0);
+
+    html+='<div class="line-card" style="margin:0 0 14px">';
+
+    // Head
+    html+='<div class="line-head"><div>';
+    html+='<span class="spec-main">OT '+ot+' — '+(ord.client||'')+'</span>';
+    html+='<span class="spec-sub" style="display:block;margin-top:2px">';
+    html+=TIPO_LABEL[ord.tipo||'cn']+' · '+(ord.caliber||'')+' · Secado: '+DRY_LABEL[ord.drying||'horno'];
+    if (ord.processed_at) html+=' · Procesado: '+ord.processed_at;
+    html+='</span></div>';
+    html+='<div style="display:flex;gap:8px;align-items:center">';
+    html+='<span class="badge badge-confirmed">En Pallets</span>';
+    html+='<button class="btn btn-primary" style="font-size:12px;padding:5px 14px" onclick="SIM.despacharOrden(\''+ot+'\')">';
+    html+='▶ Despachar orden ('+ordPals.length+' pallets)</button>';
+    html+='</div></div>';
+
+    // kg comparison
+    html+='<div class="kg-row">';
+    html+='<div class="kg-box"><div class="lbl">Pedido (terminado)</div><div class="val">'+fmtKg(ord.target_kg||0)+' kg</div></div>';
+    html+='<div class="kg-box mp"><div class="lbl">Obtenido ('+ordPals.length+' pallets)</div><div class="val">'+fmtKg(palKgSum)+' kg';
+    if (surp>0) html+=' <span style="font-size:12px;color:#2e6b18">+'+fmtKg(surp)+' excedente</span>';
+    html+='</div></div>';
+    html+='</div>';
+
+    // Source bins
+    var binTarjas = ord.bin_tarjas && ord.bin_tarjas.length ? ord.bin_tarjas : (ordPals[0]?ordPals[0].bin_tarjas:[]);
+    if (binTarjas.length) {
+      html+='<div style="margin:10px 0 8px">';
+      html+='<span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em">Bins de origen ('+binTarjas.length+')</span>';
+      html+='<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:4px">';
+      binTarjas.forEach(function(t){
+        html+='<span class="tag-tarja" onclick="SIM.openModal(\'bin\',\''+t+'\')" title="Ver trazabilidad del bin">'+t+'</span>';
+      });
+      html+='</div></div>';
+    }
+
+    // Pallet sub-table (click row for pallet trace)
+    html+='<table class="grid tight" style="margin:6px 0 0"><thead><tr>';
+    html+='<th>Tarja pallet</th><th class="num">kg</th><th class="num">Bins origen</th>';
+    html+='</tr></thead><tbody>';
+    ordPals.forEach(function(p){
+      html+='<tr style="cursor:pointer" onclick="SIM.openModal(\'pallet\',\''+p.tarja+'\')" title="Ver trazabilidad del pallet">';
+      html+='<td class="mono" style="color:var(--purple)">'+p.tarja+'</td>';
+      html+='<td class="num">'+fmtKg(p.weight_kg)+'</td>';
+      html+='<td class="num">'+p.bin_tarjas.length+'</td>';
+      html+='</tr>';
+    });
+    html+='</tbody></table>';
+
+    html+='</div>';
   });
+  cont.innerHTML=html;
 }
 
 // ════════════════════════════ RENDER DESPACHO ════════════════════════════════
 function renderDespacho() {
-  var disp=pallets.filter(function(p){return p.status==='despachado';});
-  var tbl=el('tbl-despacho'), empty=el('despacho-empty'), tbody=el('tb-despacho');
-  tbody.innerHTML='';
-  if (!disp.length){ tbl.style.display='none'; empty.style.display=''; return; }
-  tbl.style.display=''; empty.style.display='none';
-  disp.forEach(function(p){
-    var ord=findOrderOT(p.ot)||{};
-    var tr=document.createElement('tr');
-    tr.style.cursor='pointer'; tr.title='Ver trazabilidad';
-    tr.innerHTML =
-      '<td class="mono">'+p.tarja+'</td>'+
-      '<td class="mono">'+p.ot+'</td>'+
-      '<td>'+(ord.client||'—')+'</td>'+
-      '<td>'+p.caliber+'</td>'+
-      '<td class="num">'+fmtKg(p.weight_kg)+'</td>'+
-      '<td>'+(p.dispatched_at||'—')+'</td>';
-    tr.addEventListener('click', function(){ openModal('pallet', p.tarja); });
-    tbody.appendChild(tr);
+  var disp  = pallets.filter(function(p){return p.status==='despachado';});
+  var cont  = el('despacho-container');
+  var empty = el('despacho-empty');
+  cont.innerHTML='';
+  if (!disp.length){ empty.style.display=''; return; }
+  empty.style.display='none';
+
+  var otsSeen=[];
+  disp.forEach(function(p){ if(otsSeen.indexOf(p.ot)===-1) otsSeen.push(p.ot); });
+
+  var html='';
+  otsSeen.forEach(function(ot){
+    var ord     = findOrderOT(ot)||{};
+    var ordPals = disp.filter(function(p){return p.ot===ot;});
+    var sumKg   = ordPals.reduce(function(s,p){return s+p.weight_kg;},0);
+    var dispAt  = ordPals[0]?ordPals[0].dispatched_at:'';
+
+    html+='<div class="line-card" style="margin:0 0 12px">';
+    html+='<div class="line-head"><div>';
+    html+='<span class="spec-main">OT '+ot+' — '+(ord.client||'')+'</span>';
+    html+='<span class="spec-sub" style="display:block;margin-top:2px">';
+    html+=TIPO_LABEL[ord.tipo||'cn']+' · '+(ord.caliber||'')+' · Despachado: '+(dispAt||'');
+    html+='</span></div>';
+    html+='<span class="badge badge-shipped">Despachado</span>';
+    html+='</div>';
+    html+='<div class="kg-row"><div class="kg-box"><div class="lbl">'+ordPals.length+' pallets despachados</div><div class="val">'+fmtKg(sumKg)+' kg</div></div></div>';
+    html+='<table class="grid tight" style="margin:8px 0 0"><thead><tr>';
+    html+='<th>Tarja pallet</th><th class="num">kg</th><th>Fecha despacho</th>';
+    html+='</tr></thead><tbody>';
+    ordPals.forEach(function(p){
+      html+='<tr style="cursor:pointer" title="Ver trazabilidad" onclick="SIM.openModal(\'pallet\',\''+p.tarja+'\')">';
+      html+='<td class="mono" style="color:var(--purple)">'+p.tarja+'</td>';
+      html+='<td class="num">'+fmtKg(p.weight_kg)+'</td>';
+      html+='<td>'+(p.dispatched_at||'—')+'</td>';
+      html+='</tr>';
+    });
+    html+='</tbody></table></div>';
   });
+  cont.innerHTML=html;
 }
 
 // ════════════════════════════════ ACTIONS ════════════════════════════════════
@@ -708,17 +770,19 @@ function procesarOT(ot) {
   updateBadges(); showTab('pallets');
 }
 
-function despacharPallet(tarja) {
-  var p=findPallet(tarja); if(!p) return;
-  tick(ri(3,8)); var ts=simNow();
-  p.status='despachado'; p.dispatched_at=ts;
-  p.bin_tarjas.forEach(function(t){
-    var b=findBin(t); if(b){b.status='despachado';b.dispatched_at=ts;}
+function despacharOrden(ot) {
+  var ordPals = pallets.filter(function(p){ return p.ot===ot && p.status==='disponible'; });
+  if (!ordPals.length) return;
+  tick(ri(3,8));
+  var ts = simNow();
+  ordPals.forEach(function(p){
+    p.status='despachado'; p.dispatched_at=ts;
+    p.bin_tarjas.forEach(function(t){
+      var b=findBin(t); if(b){b.status='despachado';b.dispatched_at=ts;}
+    });
   });
-  var ord=findOrderOT(p.ot);
-  if (ord&&pallets.filter(function(x){return x.ot===p.ot;}).every(function(x){return x.status==='despachado';})){
-    ord.status='despachado';
-  }
+  var ord=findOrderOT(ot);
+  if (ord) ord.status='despachado';
   updateBadges(); showTab('despacho');
 }
 
@@ -806,7 +870,7 @@ return {
   startAssign:startAssign, cancelAssign:cancelAssign,
   toggleBin:toggleBin, toggleAll:toggleAll,
   confirmAssign:confirmAssign, procesarOT:procesarOT,
-  despacharPallet:despacharPallet, openModal:openModal,
+  despacharOrden:despacharOrden, openModal:openModal,
   closeModal:closeModal, reset:reset
 };
 })();
