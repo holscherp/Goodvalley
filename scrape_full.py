@@ -453,10 +453,12 @@ async def scrape_procesos_section(ctx):
 
             if date_inputs:
                 # First date input = Desde → set to start of season
+                # Must use keyboard.type() not fill() so ExtJS registers each keystroke
                 desde_inp, _ = date_inputs[0]
-                await desde_inp.triple_click()
-                await desde_inp.fill('01/01/2026')
-                await desde_inp.press('Tab')
+                await desde_inp.click()
+                await page.keyboard.press('Control+a')
+                await page.keyboard.type('01/01/2026')
+                await page.keyboard.press('Tab')
                 await page.wait_for_timeout(600)
                 print('[PROC] Desde → 01/01/2026')
 
