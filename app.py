@@ -618,8 +618,12 @@ def create_app():
                                 if r.get('neto_egreso') is not None
                             ) or None
 
+                            idot_val = next(
+                                (r.get('idot') for r in rows if r.get('idot')), None)
+
                             proc = Proceso(
                                 ot=ot,
+                                idot=idot_val,
                                 tipoproceso=first.get('tipoproceso'),
                                 drying=first.get('drying'),
                                 temporada=first.get('temporada'),
@@ -704,12 +708,12 @@ def create_app():
                             if not d_rows:
                                 d_rows = rows
 
-                            idot = next(
+                            idot_label = next(
                                 (r.get('idot') for r in rows if r.get('idot')), None)
 
                             order = Order(
-                                customer=ot,
-                                reference=idot,
+                                customer=idot_label or ot,
+                                reference=ot,
                                 status='fulfilled',
                                 notes='[proceso]',
                             )
@@ -1918,6 +1922,8 @@ def _migrate(db_obj):
         'ALTER TABLE excedentes ADD COLUMN IF NOT EXISTS source_bin_tarja VARCHAR(50)',
         # fruit quality tier on order lines
         'ALTER TABLE order_lines ADD COLUMN IF NOT EXISTS fruit_quality VARCHAR(20)',
+        # IDOT (external order ID) on Proceso records
+        'ALTER TABLE procesos ADD COLUMN IF NOT EXISTS idot VARCHAR(50)',
     ]
     with db_obj.engine.connect() as conn:
         for sql in stmts:

@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block title %}OT {{ proc.ot }} · Procesos · Goodvalley{% endblock %}
+{% block title %}IDOT {{ proc.idot or proc.ot }} · Procesos · Goodvalley{% endblock %}
 
 {% block content %}
 <div style="margin-bottom:18px">
@@ -8,48 +8,47 @@
 
 <div class="row-between" style="align-items:flex-start">
   <div>
-    <h1 style="font-size:1.5rem;margin-bottom:4px">OT {{ proc.ot }}</h1>
+    <h1 style="font-size:1.5rem;margin-bottom:4px">
+      IDOT {{ proc.idot or proc.ot }}
+    </h1>
     <p class="muted" style="margin:0">
-      {% if proc.tipoproceso %}{{ proc.tipoproceso }}{% endif %}
+      OT {{ proc.ot }}
+      {% if proc.tipoproceso %} · {{ proc.tipoproceso }}{% endif %}
       {% if proc.drying %}
         · <span class="pill pill-{{ proc.drying }}">{{ proc.drying_label }}</span>
       {% endif %}
-      {% if proc.temporada %}· Temporada {{ proc.temporada }}{% endif %}
+      {% if proc.temporada %} · Temporada {{ proc.temporada }}{% endif %}
     </p>
   </div>
   <div class="cards" style="margin:0;gap:10px">
     <div class="card" style="min-width:0;padding:12px 18px;text-align:right">
       <div class="big">{{ "{:,.1f}".format(proc.neto_egreso) if proc.neto_egreso else '—' }}</div>
-      <div class="lbl">kg neto egreso</div>
+      <div class="lbl">kg neto total</div>
     </div>
     <div class="card" style="min-width:0;padding:12px 18px;text-align:right">
-      <div class="big">{{ proc.lineas|length }}</div>
+      {% set d_rows = proc.lineas | selectattr('tipo_fila', 'equalto', 'D') | list %}
+      <div class="big">{{ d_rows | length or proc.lineas | length }}</div>
       <div class="lbl">líneas</div>
     </div>
   </div>
 </div>
 
-{% if proc.lineas %}
+{% set d_rows = proc.lineas | selectattr('tipo_fila', 'equalto', 'D') | list %}
+{% set display_rows = d_rows if d_rows else proc.lineas %}
+
+{% if display_rows %}
 <table class="grid tight" style="margin-top:24px">
   <thead><tr>
-    <th>Tipo</th>
     <th>Fecha</th>
     <th>Productor</th>
-    <th>Serie / Calibre</th>
-    <th>Secado</th>
+    <th>Calibre</th>
+    <th>Tipo de Secado</th>
     <th>Temporada</th>
-    <th class="num">Neto Egreso (kg)</th>
+    <th class="num">Kilos</th>
   </tr></thead>
   <tbody>
-  {% for l in proc.lineas %}
-  <tr {% if l.tipo_fila == 'R' %}style="background:rgba(255,255,255,.03);color:var(--muted)"{% endif %}>
-    <td>
-      {% if l.tipo_fila %}
-        <span class="pill" style="{% if l.tipo_fila == 'D' %}background:var(--lavender);color:#fff{% else %}background:#2a2a3a;color:var(--muted){% endif %}">
-          {{ l.tipo_fila }}
-        </span>
-      {% else %}—{% endif %}
-    </td>
+  {% for l in display_rows %}
+  <tr>
     <td class="mono" style="font-size:12px">{{ l.fecha or '—' }}</td>
     <td>{{ l.productor or '—' }}</td>
     <td class="mono">{{ l.serie or '—' }}</td>
@@ -59,10 +58,16 @@
       {% else %}—{% endif %}
     </td>
     <td>{{ l.temporada or '—' }}</td>
-    <td class="num">{{ "{:,.1f}".format(l.neto_egreso) if l.neto_egreso else '—' }}</td>
+    <td class="num"><strong>{{ "{:,.1f}".format(l.neto_egreso) if l.neto_egreso else '—' }}</strong></td>
   </tr>
   {% endfor %}
   </tbody>
+  <tfoot>
+    <tr style="font-weight:600;border-top:2px solid var(--border)">
+      <td colspan="5" style="text-align:right;padding-right:12px">Total</td>
+      <td class="num">{{ "{:,.1f}".format(display_rows | sum(attribute='neto_egreso') or 0) }}</td>
+    </tr>
+  </tfoot>
 </table>
 {% else %}
 <div class="empty" style="margin-top:24px">

@@ -6,14 +6,14 @@
   <div>
     <h1>Informe Procesos</h1>
     <p class="muted">
-      OTs procesadas en planta. Se actualiza con Sync Completo.
+      Órdenes de trabajo procesadas en planta. Se actualiza con Sync Completo.
       {% if last_sync %}· última sync {{ last_sync.strftime('%d-%m-%Y %H:%M') }}{% endif %}
     </p>
   </div>
   <div class="cards" style="margin:0">
     <div class="card" style="min-width:0;padding:12px 18px">
       <div class="big">{{ procesos|length }}</div>
-      <div class="lbl">OTs registradas</div>
+      <div class="lbl">órdenes registradas</div>
     </div>
   </div>
 </div>
@@ -21,17 +21,23 @@
 {% if procesos %}
 <table class="grid tight">
   <thead><tr>
+    <th>IDOT</th>
     <th>OT</th>
     <th>Tipo Proceso</th>
     <th>Secado</th>
     <th>Temporada</th>
     <th class="num">Neto Egreso (kg)</th>
-    <th>Serie / Calibre Ingreso</th>
+    <th class="num">Líneas</th>
   </tr></thead>
   <tbody>
   {% for p in procesos %}
   <tr style="cursor:pointer" onclick="location.href='{{ url_for('proceso_detail', ot=p.ot) }}'">
-    <td class="mono"><a href="{{ url_for('proceso_detail', ot=p.ot) }}" style="color:inherit;text-decoration:none">{{ p.ot }}</a></td>
+    <td class="mono" style="font-weight:600">
+      <a href="{{ url_for('proceso_detail', ot=p.ot) }}" style="color:var(--purple);text-decoration:none">
+        {{ p.idot or p.ot }}
+      </a>
+    </td>
+    <td class="mono" style="color:var(--muted);font-size:12px">{{ p.ot }}</td>
     <td>{{ p.tipoproceso or '—' }}</td>
     <td>
       {% if p.drying %}
@@ -40,7 +46,7 @@
     </td>
     <td>{{ p.temporada or '—' }}</td>
     <td class="num">{{ "{:,.1f}".format(p.neto_egreso) if p.neto_egreso else '—' }}</td>
-    <td class="mono">{{ p.serie or '—' }}</td>
+    <td class="num">{{ p.lineas|length }}</td>
   </tr>
   {% endfor %}
   </tbody>

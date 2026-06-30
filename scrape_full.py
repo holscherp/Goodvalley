@@ -309,14 +309,23 @@ def _transform_pallets(raw_rows):
 #   NETOEGRESO(5) PRODUCTOR(6) SERIEINGRESO(7) EXPORTADOR(8) SECADO(9)
 #   TEMPORADA(10) then caliber columns 20/30, 30/40, …
 
+def _num_str(val):
+    """Convert a value to a clean string, stripping float '.0' for integer-valued floats."""
+    if val is None:
+        return ''
+    if isinstance(val, float) and val.is_integer():
+        return str(int(val))
+    return str(val).strip()
+
+
 def _transform_procesos(raw_rows):
     procesos = []
     for row in raw_rows:
-        ot = str(_rv(row, 'OT', 3) or '').strip()
+        ot = _num_str(_rv(row, 'OT', 3))
         if not ot:
             continue
         tipo_fila   = str(_rv(row, 'TIPO', 2) or '').strip().upper() or None
-        idot        = str(_rv(row, 'IDOT', 4) or '').strip() or None
+        idot        = _num_str(_rv(row, 'IDOT', 4)) or None
         fecha       = str(_rv(row, 'FECHAPRODUCCION', 0) or '').strip() or None
         tipoproceso = str(_rv(row, 'TIPOPROCESO', 1) or '').strip()
         neto        = _rv(row, 'NETOEGRESO', 5)
@@ -419,10 +428,64 @@ async def scrape_procesos_section(ctx):
         await page.wait_for_timeout(3000)
         await page.wait_for_load_state('networkidle', timeout=15000)
 
+        # Screenshot + body dump for debugging what pWarehouse shows
+        SCREENSHOT_DIR.mkdir(exist_ok=True)
+        await page.screenshot(path=str(SCREENSHOT_DIR / 'proc_before.png'))
+        try:
+            body_text = await page.inner_text('body')
+            (SCREENSHOT_DIR / 'proc_body.txt').write_text(body_text[:8000])
+        except Exception:
+            pass
+
+        # Log every text-input value currently on the page (reveals date filters)
+        _date_re = re.compile(r'^\d{1,2}/\d{1,2}/\d{4}$')
+        try:
+            inputs = await page.locator('input[type="text"]').all()
+            vals = []
+            for inp in inputs:
+                try:
+                    v = await inp.input_value()
+                    vals.append(repr(v))
+                except Exception:
+                    pass
+            print(f'[PROC] Inputs en página: {vals[:12]}')
+        except Exception as e:
+            print(f'[PROC] No se pudo listar inputs: {e}')
+
+        # Clear any date-format inputs to remove the "today only" filter
+        try:
+            inputs = await page.locator('input[type="text"]').all()
+            cleared = 0
+            for inp in inputs:
+                try:
+                    v = await inp.input_value()
+                    if _date_re.match(v or ''):
+                        await inp.triple_click()
+                        await inp.fill('')
+                        await inp.press('Tab')
+                        cleared += 1
+                        await page.wait_for_timeout(300)
+                except Exception:
+                    pass
+            print(f'[PROC] Filtros de fecha limpiados: {cleared}')
+            if cleared:
+                await page.wait_for_timeout(1500)
+        except Exception as e:
+            print(f'[PROC] Error limpiando fechas: {e}')
+
         rows, _ = await _capture_rows(page, 'PROC', btn_texts=['Actualizar', 'Buscar'])
+
+        SCREENSHOT_DIR.mkdir(exist_ok=True)
         if rows:
             (SCREENSHOT_DIR / 'procesos_sample.json').write_text(
-                json.dumps(rows[:3], ensure_ascii=False, indent=2))
+                json.dumps(rows[:5], ensure_ascii=False, indent=2))
+            first = rows[0]
+            if isinstance(first, dict):
+                print(f'[PROC] Claves JSON: {list(first.keys())[:15]}')
+                print(f'[PROC] Muestra — OT={first.get("OT","?")} '
+                      f'IDOT={first.get("IDOT","?")} TIPO={first.get("TIPO","?")}')
+            elif isinstance(first, list):
+                print(f'[PROC] Fila tipo lista len={len(first)}: {first[:8]}')
         return _transform_procesos(rows)
     finally:
         await page.close()

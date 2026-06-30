@@ -335,6 +335,7 @@ class Proceso(db.Model):
 
     id          = db.Column(db.Integer, primary_key=True)
     ot          = db.Column(db.String(50),  nullable=False)
+    idot        = db.Column(db.String(50),  nullable=True)
     tipoproceso = db.Column(db.String(50),  nullable=True)
     drying      = db.Column(db.String(30),  nullable=True)
     temporada   = db.Column(db.String(10),  nullable=True)
