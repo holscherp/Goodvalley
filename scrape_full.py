@@ -428,7 +428,6 @@ async def scrape_procesos_section(ctx):
         await page.wait_for_timeout(3000)
         await page.wait_for_load_state('networkidle', timeout=15000)
 
-        # Screenshot + body dump for debugging what pWarehouse shows
         SCREENSHOT_DIR.mkdir(exist_ok=True)
         await page.screenshot(path=str(SCREENSHOT_DIR / 'proc_before.png'))
         try:
@@ -437,45 +436,89 @@ async def scrape_procesos_section(ctx):
         except Exception:
             pass
 
-        # Log every text-input value currently on the page (reveals date filters)
-        _date_re = re.compile(r'^\d{1,2}/\d{1,2}/\d{4}$')
+        # Dump ALL form fields via JS for diagnostics
         try:
-            inputs = await page.locator('input[type="text"]').all()
-            vals = []
-            for inp in inputs:
-                try:
-                    v = await inp.input_value()
-                    vals.append(repr(v))
-                except Exception:
-                    pass
-            print(f'[PROC] Inputs en página: {vals[:12]}')
+            all_fields = await page.evaluate('''() => {
+                const els = document.querySelectorAll("input, select");
+                return Array.from(els).slice(0, 40).map(el => ({
+                    tag: el.tagName, type: el.type || "",
+                    name: el.name || "", id: el.id || "",
+                    value: el.value || "", placeholder: el.placeholder || ""
+                }));
+            }''')
+            print(f'[PROC] Campos en página ({len(all_fields)}):')
+            for f in all_fields:
+                if f.get('value') or f.get('name') or f.get('id'):
+                    print(f'  {f["tag"]}#{f["id"]} name={f["name"]} '
+                          f'type={f["type"]} val={repr(f["value"])}')
         except Exception as e:
-            print(f'[PROC] No se pudo listar inputs: {e}')
+            print(f'[PROC] Error inspeccionando campos JS: {e}')
 
-        # Clear any date-format inputs to remove the "today only" filter
+        # Strategy 1: clear via ExtJS/UniGUI component API (setValue)
         try:
-            inputs = await page.locator('input[type="text"]').all()
-            cleared = 0
-            for inp in inputs:
+            js_cleared = await page.evaluate(r'''() => {
+                const dateRe = /\d{1,2}[\/\-\.]\d{1,2}/;
+                let count = 0;
+                document.querySelectorAll("input").forEach(el => {
+                    if (!dateRe.test(el.value || "")) return;
+                    // Try UniGUI/ExtJS component API first
+                    try {
+                        const cmpId = el.id ? el.id.replace("_id", "") : null;
+                        const cmp = cmpId && typeof Ext !== "undefined"
+                            && Ext.getCmp && Ext.getCmp(cmpId);
+                        if (cmp && typeof cmp.setValue === "function") {
+                            cmp.setValue("");
+                            count++;
+                            return;
+                        }
+                    } catch(e) {}
+                    // Fallback: native setter + dispatch events
+                    try {
+                        const setter = Object.getOwnPropertyDescriptor(
+                            window.HTMLInputElement.prototype, "value").set;
+                        setter.call(el, "");
+                        el.dispatchEvent(new Event("input",  {bubbles: true}));
+                        el.dispatchEvent(new Event("change", {bubbles: true}));
+                        el.dispatchEvent(new KeyboardEvent("keyup", {bubbles: true}));
+                        count++;
+                    } catch(e) {}
+                });
+                return count;
+            }''')
+            print(f'[PROC] Fechas limpiadas (JS/ExtJS): {js_cleared}')
+            if js_cleared:
+                await page.wait_for_timeout(1200)
+        except Exception as e:
+            print(f'[PROC] Error clearing JS: {e}')
+
+        # Strategy 2: Playwright keyboard-based clearing (reliable for ExtJS rendered fields)
+        _date_re = re.compile(r'\d{1,2}[/\-\.]\d{1,2}')
+        try:
+            pw_cleared = 0
+            for inp in await page.locator('input').all():
                 try:
                     v = await inp.input_value()
-                    if _date_re.match(v or ''):
-                        await inp.triple_click()
-                        await inp.fill('')
-                        await inp.press('Tab')
-                        cleared += 1
-                        await page.wait_for_timeout(300)
+                    if _date_re.search(v or ''):
+                        await inp.click()
+                        await page.keyboard.press('Control+a')
+                        await page.keyboard.press('Delete')
+                        await page.keyboard.press('Escape')
+                        await page.keyboard.press('Tab')
+                        pw_cleared += 1
+                        await page.wait_for_timeout(400)
                 except Exception:
                     pass
-            print(f'[PROC] Filtros de fecha limpiados: {cleared}')
-            if cleared:
+            print(f'[PROC] Fechas limpiadas (Playwright): {pw_cleared}')
+            if pw_cleared:
                 await page.wait_for_timeout(1500)
         except Exception as e:
-            print(f'[PROC] Error limpiando fechas: {e}')
+            print(f'[PROC] Error clearing Playwright: {e}')
+
+        # Screenshot after clearing to confirm state
+        await page.screenshot(path=str(SCREENSHOT_DIR / 'proc_after_clear.png'))
 
         rows, _ = await _capture_rows(page, 'PROC', btn_texts=['Actualizar', 'Buscar'])
 
-        SCREENSHOT_DIR.mkdir(exist_ok=True)
         if rows:
             (SCREENSHOT_DIR / 'procesos_sample.json').write_text(
                 json.dumps(rows[:5], ensure_ascii=False, indent=2))

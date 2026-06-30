@@ -1887,6 +1887,56 @@ def create_app():
     def simulador():
         return render_template('simulador.html')
 
+    # ── Debug: pWarehouse scraper diagnostics ─────────────────────────────────
+
+    @app.route('/admin/debug/proc')
+    def debug_proc():
+        from flask import make_response, send_file
+        from pathlib import Path as _P
+        fmt = request.args.get('fmt', 'text')
+        base = _P('/tmp/gv_scraper')
+
+        if fmt == 'img':
+            name = request.args.get('name', 'proc_before.png')
+            p = base / name
+            if p.exists() and p.suffix == '.png':
+                return send_file(str(p), mimetype='image/png')
+            return 'Not found', 404
+
+        if fmt == 'json':
+            p = base / 'procesos_sample.json'
+            if p.exists():
+                return make_response(p.read_text(), 200,
+                    {'Content-Type': 'application/json; charset=utf-8'})
+            return 'Not found', 404
+
+        # Default: HTML page with body text + links to images
+        body_file = base / 'proc_body.txt'
+        body_txt = body_file.read_text() if body_file.exists() else '(no proc_body.txt yet — run a sync first)'
+        import html as _html
+        imgs = ['proc_before.png', 'proc_after_clear.png', 'proc_nav_fail.png']
+        img_tags = ''.join(
+            f'<p><strong>{n}</strong><br>'
+            f'<img src="/admin/debug/proc?fmt=img&name={n}" style="max-width:100%;border:1px solid #ccc"></p>'
+            for n in imgs if (base / n).exists()
+        )
+        sample_link = (
+            '<p><a href="/admin/debug/proc?fmt=json">procesos_sample.json</a></p>'
+            if (base / 'procesos_sample.json').exists() else ''
+        )
+        html = f'''<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Debug Procesos</title>
+<style>body{{font-family:monospace;padding:16px;background:#111;color:#ddd}}
+pre{{background:#1a1a2a;padding:12px;white-space:pre-wrap;word-break:break-all;font-size:11px}}</style>
+</head><body>
+<h2>pWarehouse Informe Procesos — diagnóstico</h2>
+{sample_link}
+{img_tags}
+<h3>proc_body.txt</h3>
+<pre>{_html.escape(body_txt)}</pre>
+</body></html>'''
+        return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
+
     return app
 
 
