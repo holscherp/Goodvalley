@@ -56,13 +56,21 @@
 {% endmacro %}
 
 {% block content %}
+{% set is_proceso = order.notes == '[proceso]' %}
 <div class="row-between">
   <div>
     <a class="back" href="{{ url_for('list_orders') }}">← Órdenes</a>
-    <h1>Orden #{{ order.id }} · {{ order.customer }}</h1>
+    <h1>
+      {% if is_proceso %}OT {{ order.customer }}{% else %}Orden #{{ order.id }} · {{ order.customer }}{% endif %}
+    </h1>
     <p class="muted">
-      {% if order.reference %}{{ order.reference }} · {% endif %}
-      creada {{ order.created_at.strftime('%d-%m-%Y') }}
+      {% if is_proceso %}
+        {% if order.reference %}IDOT {{ order.reference }} · {% endif %}
+        Informe Procesos · importado {{ order.created_at.strftime('%d-%m-%Y') }}
+      {% else %}
+        {% if order.reference %}{{ order.reference }} · {% endif %}
+        creada {{ order.created_at.strftime('%d-%m-%Y') }}
+      {% endif %}
     </p>
   </div>
   <div class="status-actions">
@@ -91,6 +99,50 @@
   </div>
 </div>
 
+{% if is_proceso %}
+{# ── Process-derived order: flat table of lines (no bin allocation UI) ── #}
+<table class="grid tight" style="margin-top:16px">
+  <thead><tr>
+    <th>Calibre</th>
+    <th>Condición</th>
+    <th>Secado</th>
+    <th>Temporada</th>
+    <th>Productor</th>
+    <th>Fecha</th>
+    <th class="num">Neto Egreso (kg)</th>
+  </tr></thead>
+  <tbody>
+  {% for line in order.lines %}
+    {% set note_parts = (line.notes or '').split(' · ') %}
+    <tr>
+      <td>{{ line.caliber or '—' }}</td>
+      <td>
+        {% if line.product_type %}
+          <span class="pill" style="background:var(--lavender);color:#fff">{{ line.product_type_label }}</span>
+        {% else %}—{% endif %}
+      </td>
+      <td>
+        {% if line.drying %}
+          <span class="pill pill-{{ line.drying }}">{{ line.drying_label }}</span>
+        {% else %}—{% endif %}
+      </td>
+      <td>{{ line.temporada or '—' }}</td>
+      <td>{{ note_parts[0] if note_parts|length > 0 else '—' }}</td>
+      <td class="mono" style="font-size:12px">{{ note_parts[1] if note_parts|length > 1 else '—' }}</td>
+      <td class="num">{{ "{:,.1f}".format(line.target_kg) if line.target_kg else '—' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr style="font-weight:600">
+      <td colspan="6" style="text-align:right;padding-right:12px">Total</td>
+      <td class="num">{{ "{:,.1f}".format(order.lines | sum(attribute='target_kg')) }}</td>
+    </tr>
+  </tfoot>
+</table>
+
+{% else %}
+{# ── Regular sales order: allocation tracking UI ── #}
 {% for line in order.lines %}
 <section class="line-card {{ 'satisfied' if line.satisfied }}">
   <div class="line-head">
@@ -281,6 +333,7 @@
 
 </section>
 {% endfor %}
+{% endif %}
 
 {% if order.status in ('open', 'confirmed') %}
 <details class="add-line">

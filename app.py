@@ -662,6 +662,95 @@ def create_app():
                         lf.write(f'✗ Error importando procesos: {e}\n')
                         lf.flush()
 
+            # ── Create Orders from Informe Procesos ───────────────────────
+            if procesos_path.exists():
+                try:
+                    proc_rows = _json.loads(procesos_path.read_text())
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'► Creando órdenes desde procesos...\n')
+                        lf.flush()
+                    with _app.app_context():
+                        from models import Order, OrderLine
+
+                        # Clear previous proceso-derived orders (cascade deletes lines)
+                        proc_orders = Order.query.filter_by(notes='[proceso]').all()
+                        for po in proc_orders:
+                            db.session.delete(po)
+                        db.session.commit()
+
+                        # Group by OT
+                        from collections import OrderedDict as _OD2
+                        by_ot = _OD2()
+                        for row in proc_rows:
+                            ot = row.get('ot', '').strip()
+                            if not ot:
+                                continue
+                            by_ot.setdefault(ot, []).append(row)
+
+                        def _parse_pt(tipoproceso):
+                            t = (tipoproceso or '').lower()
+                            if 'tcc'    in t: return 'tcc'
+                            if 'tsc'    in t: return 'tsc'
+                            if 'elliot' in t: return 'elliot'
+                            if 'tss'    in t: return 'ss'
+                            if 'natural' in t or 'condici' in t: return 'cn'
+                            if 'ss'     in t: return 'ss'
+                            return None
+
+                        ord_count = line_count = 0
+                        for ot, rows in by_ot.items():
+                            d_rows = [r for r in rows
+                                      if (r.get('tipo_fila') or '').upper() == 'D']
+                            if not d_rows:
+                                d_rows = rows
+
+                            idot = next(
+                                (r.get('idot') for r in rows if r.get('idot')), None)
+
+                            order = Order(
+                                customer=ot,
+                                reference=idot,
+                                status='fulfilled',
+                                notes='[proceso]',
+                            )
+                            db.session.add(order)
+                            db.session.flush()
+                            ord_count += 1
+
+                            for row in d_rows:
+                                note_parts = []
+                                if row.get('productor'):
+                                    note_parts.append(row['productor'])
+                                if row.get('fecha'):
+                                    note_parts.append(row['fecha'])
+
+                                db.session.add(OrderLine(
+                                    order_id=order.id,
+                                    caliber=row.get('serie') or None,
+                                    drying=row.get('drying') or None,
+                                    product_type=_parse_pt(row.get('tipoproceso')),
+                                    target_kg=float(row.get('neto_egreso') or 0),
+                                    temporada=row.get('temporada') or None,
+                                    notes=' · '.join(note_parts) or None,
+                                ))
+                                line_count += 1
+
+                            if ord_count % 50 == 0:
+                                db.session.commit()
+
+                        db.session.commit()
+
+                    with open(log_path, 'a') as lf:
+                        lf.write(
+                            f'✓ Órdenes (procesos): {ord_count} OTs, '
+                            f'{line_count} líneas importadas.\n'
+                        )
+                        lf.flush()
+                except Exception as e:
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'✗ Error creando órdenes desde procesos: {e}\n')
+                        lf.flush()
+
             # ── Import pallets to Pallet table ────────────────────────────
             if pallets_path.exists():
                 try:
