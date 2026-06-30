@@ -436,85 +436,40 @@ async def scrape_procesos_section(ctx):
         except Exception:
             pass
 
-        # Dump ALL form fields via JS for diagnostics
+        # Set Desde = 01/01/2026 so we capture the full season, not just today.
+        # pWarehouse defaults both Desde and Hasta to today on page load.
+        _date_re = re.compile(r'\d{1,2}/\d{1,2}/\d{4}')
         try:
-            all_fields = await page.evaluate('''() => {
-                const els = document.querySelectorAll("input, select");
-                return Array.from(els).slice(0, 40).map(el => ({
-                    tag: el.tagName, type: el.type || "",
-                    name: el.name || "", id: el.id || "",
-                    value: el.value || "", placeholder: el.placeholder || ""
-                }));
-            }''')
-            print(f'[PROC] Campos en página ({len(all_fields)}):')
-            for f in all_fields:
-                if f.get('value') or f.get('name') or f.get('id'):
-                    print(f'  {f["tag"]}#{f["id"]} name={f["name"]} '
-                          f'type={f["type"]} val={repr(f["value"])}')
-        except Exception as e:
-            print(f'[PROC] Error inspeccionando campos JS: {e}')
-
-        # Strategy 1: clear via ExtJS/UniGUI component API (setValue)
-        try:
-            js_cleared = await page.evaluate(r'''() => {
-                const dateRe = /\d{1,2}[\/\-\.]\d{1,2}/;
-                let count = 0;
-                document.querySelectorAll("input").forEach(el => {
-                    if (!dateRe.test(el.value || "")) return;
-                    // Try UniGUI/ExtJS component API first
-                    try {
-                        const cmpId = el.id ? el.id.replace("_id", "") : null;
-                        const cmp = cmpId && typeof Ext !== "undefined"
-                            && Ext.getCmp && Ext.getCmp(cmpId);
-                        if (cmp && typeof cmp.setValue === "function") {
-                            cmp.setValue("");
-                            count++;
-                            return;
-                        }
-                    } catch(e) {}
-                    // Fallback: native setter + dispatch events
-                    try {
-                        const setter = Object.getOwnPropertyDescriptor(
-                            window.HTMLInputElement.prototype, "value").set;
-                        setter.call(el, "");
-                        el.dispatchEvent(new Event("input",  {bubbles: true}));
-                        el.dispatchEvent(new Event("change", {bubbles: true}));
-                        el.dispatchEvent(new KeyboardEvent("keyup", {bubbles: true}));
-                        count++;
-                    } catch(e) {}
-                });
-                return count;
-            }''')
-            print(f'[PROC] Fechas limpiadas (JS/ExtJS): {js_cleared}')
-            if js_cleared:
-                await page.wait_for_timeout(1200)
-        except Exception as e:
-            print(f'[PROC] Error clearing JS: {e}')
-
-        # Strategy 2: Playwright keyboard-based clearing (reliable for ExtJS rendered fields)
-        _date_re = re.compile(r'\d{1,2}[/\-\.]\d{1,2}')
-        try:
-            pw_cleared = 0
-            for inp in await page.locator('input').all():
+            all_inputs = await page.locator('input').all()
+            date_inputs = []
+            for inp in all_inputs:
                 try:
                     v = await inp.input_value()
                     if _date_re.search(v or ''):
-                        await inp.click()
-                        await page.keyboard.press('Control+a')
-                        await page.keyboard.press('Delete')
-                        await page.keyboard.press('Escape')
-                        await page.keyboard.press('Tab')
-                        pw_cleared += 1
-                        await page.wait_for_timeout(400)
+                        date_inputs.append((inp, v))
                 except Exception:
                     pass
-            print(f'[PROC] Fechas limpiadas (Playwright): {pw_cleared}')
-            if pw_cleared:
-                await page.wait_for_timeout(1500)
-        except Exception as e:
-            print(f'[PROC] Error clearing Playwright: {e}')
+            print(f'[PROC] Campos de fecha encontrados: {len(date_inputs)} → {[v for _,v in date_inputs]}')
 
-        # Screenshot after clearing to confirm state
+            if date_inputs:
+                # First date input = Desde → set to start of season
+                desde_inp, _ = date_inputs[0]
+                await desde_inp.triple_click()
+                await desde_inp.fill('01/01/2026')
+                await desde_inp.press('Tab')
+                await page.wait_for_timeout(600)
+                print('[PROC] Desde → 01/01/2026')
+
+                # Log what Hasta is (leave it as-is, should be today)
+                if len(date_inputs) >= 2:
+                    hasta_inp, hasta_val = date_inputs[1]
+                    print(f'[PROC] Hasta → {hasta_val} (sin cambio)')
+
+            await page.wait_for_timeout(1000)
+        except Exception as e:
+            print(f'[PROC] Error ajustando fecha Desde: {e}')
+
+        # Screenshot after setting the date range
         await page.screenshot(path=str(SCREENSHOT_DIR / 'proc_after_clear.png'))
 
         rows, _ = await _capture_rows(page, 'PROC', btn_texts=['Actualizar', 'Buscar'])
