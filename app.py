@@ -134,7 +134,7 @@ def create_app():
     db.init_app(app)
 
     with app.app_context():
-        from models import Bin, Order, OrderLine, Allocation, Excedente, YieldOverride, Proceso, Pallet  # noqa: F401
+        from models import Bin, Order, OrderLine, Allocation, Excedente, YieldOverride, Proceso, ProcesoLinea, Pallet  # noqa: F401
         db.create_all()
 
         _migrate(db)
@@ -580,31 +580,82 @@ def create_app():
                         lf.write(f'✗ Error importando pallets: {e}\n')
                         lf.flush()
 
-            # ── Import procesos to Proceso table ──────────────────────────
+            # ── Import procesos to Proceso + ProcesoLinea tables ──────────
             if procesos_path.exists():
                 try:
                     proc_data = _json.loads(procesos_path.read_text())
                     with open(log_path, 'a') as lf:
-                        lf.write(f'► Importando {len(proc_data)} procesos...\n')
+                        lf.write(f'► Importando {len(proc_data)} líneas de procesos...\n')
                         lf.flush()
                     with _app.app_context():
-                        from models import Proceso
+                        from models import Proceso, ProcesoLinea
+
+                        # Full clear-and-reinsert
+                        ProcesoLinea.query.delete(synchronize_session=False)
                         Proceso.query.delete(synchronize_session=False)
-                        for p in proc_data:
-                            if not p.get('ot'):
-                                continue
-                            db.session.add(Proceso(
-                                ot=p['ot'],
-                                tipoproceso=p.get('tipoproceso'),
-                                drying=p.get('drying'),
-                                temporada=p.get('temporada'),
-                                neto_egreso=p.get('neto_egreso'),
-                                serie=p.get('serie'),
-                                synced_at=datetime.utcnow(),
-                            ))
                         db.session.commit()
+
+                        # Group rows by OT
+                        from collections import OrderedDict as _OD
+                        by_ot = _OD()
+                        for row in proc_data:
+                            ot = row.get('ot', '').strip()
+                            if not ot:
+                                continue
+                            by_ot.setdefault(ot, []).append(row)
+
+                        synced = datetime.utcnow()
+                        ot_count = linea_count = 0
+
+                        for ot, rows in by_ot.items():
+                            # Summary: use first row's tipoproceso/drying/temporada;
+                            # neto_egreso = sum of D-rows (or all rows if no D tag)
+                            first = rows[0]
+                            d_rows = [r for r in rows if (r.get('tipo_fila') or '').upper() == 'D']
+                            summary_rows = d_rows if d_rows else rows
+                            total_neto = sum(
+                                r['neto_egreso'] for r in summary_rows
+                                if r.get('neto_egreso') is not None
+                            ) or None
+
+                            proc = Proceso(
+                                ot=ot,
+                                tipoproceso=first.get('tipoproceso'),
+                                drying=first.get('drying'),
+                                temporada=first.get('temporada'),
+                                neto_egreso=total_neto,
+                                serie=first.get('serie'),
+                                synced_at=synced,
+                            )
+                            db.session.add(proc)
+                            db.session.flush()
+                            ot_count += 1
+
+                            for row in rows:
+                                db.session.add(ProcesoLinea(
+                                    proceso_id=proc.id,
+                                    ot=ot,
+                                    tipo_fila=row.get('tipo_fila'),
+                                    idot=row.get('idot'),
+                                    fecha=row.get('fecha'),
+                                    tipoproceso=row.get('tipoproceso'),
+                                    productor=row.get('productor'),
+                                    serie=row.get('serie'),
+                                    drying=row.get('drying'),
+                                    temporada=row.get('temporada'),
+                                    neto_egreso=row.get('neto_egreso'),
+                                ))
+                                linea_count += 1
+
+                            if ot_count % 100 == 0:
+                                db.session.commit()
+
+                        db.session.commit()
+
                     with open(log_path, 'a') as lf:
-                        lf.write(f'✓ Procesos: {len(proc_data)} OTs importados.\n')
+                        lf.write(
+                            f'✓ Procesos: {ot_count} OTs, {linea_count} líneas importadas.\n'
+                        )
                         lf.flush()
                 except Exception as e:
                     with open(log_path, 'a') as lf:
@@ -1644,6 +1695,12 @@ def create_app():
         procesos  = Proceso.query.order_by(Proceso.ot).all()
         last_sync = procesos[0].synced_at if procesos else None
         return render_template('procesos.html', procesos=procesos, last_sync=last_sync)
+
+    @app.route('/procesos/<path:ot>')
+    def proceso_detail(ot):
+        from models import Proceso
+        proc = Proceso.query.filter_by(ot=ot).first_or_404()
+        return render_template('proceso_detail.html', proc=proc)
 
     @app.route('/pallets')
     def list_pallets():

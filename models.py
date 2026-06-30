@@ -342,6 +342,30 @@ class Proceso(db.Model):
     serie       = db.Column(db.String(50),  nullable=True)
     synced_at   = db.Column(db.DateTime,    default=datetime.utcnow)
 
+    lineas = db.relationship('ProcesoLinea', backref='proceso',
+                             cascade='all, delete-orphan', lazy='select')
+
+    @property
+    def drying_label(self):
+        return DRYING_LABELS.get(self.drying, self.drying or '—')
+
+
+class ProcesoLinea(db.Model):
+    __tablename__ = 'proceso_lineas'
+
+    id          = db.Column(db.Integer, primary_key=True)
+    proceso_id  = db.Column(db.Integer, db.ForeignKey('procesos.id'), nullable=False)
+    ot          = db.Column(db.String(50),  nullable=False)
+    tipo_fila   = db.Column(db.String(5),   nullable=True)   # 'D' or 'R'
+    idot        = db.Column(db.String(50),  nullable=True)
+    fecha       = db.Column(db.String(50),  nullable=True)
+    tipoproceso = db.Column(db.String(50),  nullable=True)
+    productor   = db.Column(db.String(200), nullable=True)
+    serie       = db.Column(db.String(50),  nullable=True)
+    drying      = db.Column(db.String(30),  nullable=True)
+    temporada   = db.Column(db.String(20),  nullable=True)
+    neto_egreso = db.Column(db.Float,       nullable=True)
+
     @property
     def drying_label(self):
         return DRYING_LABELS.get(self.drying, self.drying or '—')

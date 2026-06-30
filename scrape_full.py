@@ -312,16 +312,20 @@ def _transform_pallets(raw_rows):
 def _transform_procesos(raw_rows):
     procesos = []
     for row in raw_rows:
-        ot     = str(_rv(row, 'OT', 3) or '').strip()
+        ot = str(_rv(row, 'OT', 3) or '').strip()
         if not ot:
             continue
-        tipo   = str(_rv(row, 'TIPOPROCESO', 1) or '').strip()
-        secado = _rv(row, 'SECADO', 9)
-        temp   = _rv(row, 'TEMPORADA', 10)
-        neto   = _rv(row, 'NETOEGRESO', 5)
-        serie  = str(_rv(row, 'SERIEINGRESO', 7) or '').strip()
+        tipo_fila   = str(_rv(row, 'TIPO', 2) or '').strip().upper() or None
+        idot        = str(_rv(row, 'IDOT', 4) or '').strip() or None
+        fecha       = str(_rv(row, 'FECHAPRODUCCION', 0) or '').strip() or None
+        tipoproceso = str(_rv(row, 'TIPOPROCESO', 1) or '').strip()
+        neto        = _rv(row, 'NETOEGRESO', 5)
+        productor   = str(_rv(row, 'PRODUCTOR', 6) or '').strip() or None
+        serie       = str(_rv(row, 'SERIEINGRESO', 7) or '').strip()
+        secado      = _rv(row, 'SECADO', 9)
+        temp        = _rv(row, 'TEMPORADA', 10)
 
-        drying    = _parse_drying(secado)
+        drying = _parse_drying(secado)
         try:
             temporada = str(int(float(temp))) if temp else None
         except Exception:
@@ -329,7 +333,11 @@ def _transform_procesos(raw_rows):
 
         procesos.append({
             'ot':          ot,
-            'tipoproceso': tipo,
+            'tipo_fila':   tipo_fila,
+            'idot':        idot,
+            'fecha':       fecha,
+            'tipoproceso': tipoproceso,
+            'productor':   productor,
             'drying':      drying,
             'temporada':   temporada,
             'neto_egreso': float(neto) if neto else None,

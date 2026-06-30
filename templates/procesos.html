@@ -30,8 +30,8 @@
   </tr></thead>
   <tbody>
   {% for p in procesos %}
-  <tr>
-    <td class="mono">{{ p.ot }}</td>
+  <tr style="cursor:pointer" onclick="location.href='{{ url_for('proceso_detail', ot=p.ot) }}'">
+    <td class="mono"><a href="{{ url_for('proceso_detail', ot=p.ot) }}" style="color:inherit;text-decoration:none">{{ p.ot }}</a></td>
     <td>{{ p.tipoproceso or '—' }}</td>
     <td>
       {% if p.drying %}
