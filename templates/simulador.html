@@ -540,7 +540,8 @@ function buildAssignPanel(order, yr, mpNeeded) {
   html += '<strong>'+selCount+'</strong> bins · <strong>'+fmtKg(selKg)+'</strong> kg seleccionados';
   html += ' <span style="color:var(--muted);font-size:12px">(necesitás '+fmtKg(mpNeeded)+' kg → '+pct+'% cubierto)</span>';
   html += '</div>';
-  html += '<div style="display:flex;gap:8px">';
+  html += '<div style="display:flex;gap:8px;align-items:center">';
+  html += '<button class="btn btn-sync" style="font-size:12px" onclick="SIM.autoSelect('+order.id+')" title="Selecciona los bins necesarios para cubrir el pedido">⚡ Auto-seleccionar</button>';
   html += '<button class="btn btn-ghost" style="font-size:12px" onclick="SIM.cancelAssign()">Cancelar</button>';
   if (selCount>0) {
     html += '<button class="btn btn-primary" style="font-size:12px" onclick="SIM.confirmAssign('+order.id+')">';
@@ -790,6 +791,24 @@ function toggleAll(checked, orderId) {
   });
   renderOrdenes();
 }
+function autoSelect(orderId) {
+  var order = findOrder(orderId);
+  if (!order) return;
+  var yr       = getYield(order.tipo, order.caliber);
+  var mpNeeded = Math.ceil(order.target_kg / yr);
+  var matching = bins.filter(function(b){
+    return b.status==='bodega' && b.caliber===order.caliber && b.drying===order.drying;
+  });
+  selectedBins = {};
+  var accumulated = 0;
+  matching.forEach(function(b) {
+    if (accumulated < mpNeeded) {
+      selectedBins[b.tarja] = true;
+      accumulated += b.weight_kg;
+    }
+  });
+  renderOrdenes();
+}
 
 function confirmAssign(orderId) {
   var order    = findOrder(orderId);
@@ -948,7 +967,7 @@ showTab('bins');
 return {
   showTab:showTab, renderBins:renderBins,
   startAssign:startAssign, cancelAssign:cancelAssign,
-  toggleBin:toggleBin, toggleAll:toggleAll,
+  toggleBin:toggleBin, toggleAll:toggleAll, autoSelect:autoSelect,
   confirmAssign:confirmAssign, procesarOT:procesarOT,
   despacharOrden:despacharOrden, openModal:openModal,
   closeModal:closeModal, reset:reset

@@ -254,7 +254,13 @@
 
         <div class="sel-bar">
           <span>Selección: <strong id="sel-count-{{ line.id }}">0</strong> elemento(s) · <strong id="sel-kg-{{ line.id }}">0,0</strong> kg</span>
-          <button class="btn btn-primary" type="submit">Asignar seleccionados</button>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-sync" type="button" onclick="autoSelect{{ line.id }}()"
+                    title="Selecciona los bins necesarios para cubrir los kg que faltan">
+              ⚡ Auto-seleccionar
+            </button>
+            <button class="btn btn-primary" type="submit">Asignar seleccionados</button>
+          </div>
         </div>
 
         {% if search_bins %}
@@ -322,6 +328,19 @@
         document.getElementById('sel-count-{{ line.id }}').textContent = count;
         document.getElementById('sel-kg-{{ line.id }}').textContent =
           kg.toLocaleString('es-CL', {minimumFractionDigits:1, maximumFractionDigits:1});
+      }
+      function autoSelect{{ line.id }}() {
+        var needed = {{ (line.mp_kg_needed - line.allocated_kg) | round(1) }};
+        var checkboxes = document.querySelectorAll('#alloc-form-{{ line.id }} input[data-kg]');
+        checkboxes.forEach(function(c) { c.checked = false; });
+        var accumulated = 0;
+        checkboxes.forEach(function(c) {
+          if (accumulated < needed) {
+            c.checked = true;
+            accumulated += parseFloat(c.dataset.kg);
+          }
+        });
+        updateSel{{ line.id }}();
       }
       </script>
       {% else %}
