@@ -597,52 +597,53 @@ async def main():
                 pallet['temporada'] = info['temporada']
 
     # ── Link raw bins and pallets via historico xlsx ──────────────────────────
-    # historico EGRESO A PROCESO rows: IDBINS2 (raw bin tarja) links to OT.
-    # We use this to:
-    #   (a) add 'ot' to each raw bin so upload can auto-allocate it to the
-    #       order line that has "OT {ot}" in its notes field
-    #   (b) add 'bin_identifiers' to each pallet (list of IDBINS2 raw tarjas
-    #       that fed into that OT) so import-pallets can record the connection
+    # EGRESO A PROCESO rows where TARJA starts with 25/26 are raw bins leaving
+    # bodega for processing. TARJA = bin_identifier (10-digit tarja).
+    # IDBINS2 is a short internal ID that does NOT match bin tarjas — ignore it.
     if HISTORICO_PATH.exists() and (bins_ok or pallets_ok):
         try:
             import pandas as _pd
             hist = _pd.read_excel(HISTORICO_PATH)
             egreso = hist[hist['MOVIMIENTO'] == 'EGRESO A PROCESO'].copy()
-            egreso['IDBINS2'] = (egreso['IDBINS2'].astype(str).str.strip()
+            egreso['TARJA_s'] = (egreso['TARJA'].astype(str).str.strip()
                                  .str.split('.').str[0])
-            egreso = egreso[egreso['IDBINS2'].notna() & (egreso['IDBINS2'] != 'nan')]
             egreso['OT_s'] = egreso['OT'].astype(str).str.strip()
+            # Keep only rows with a real 10-digit bin tarja (starts 25xx or 26xx)
+            egreso = egreso[egreso['TARJA_s'].str.match(r'^2[56]\d{8}$')]
+            egreso = egreso[egreso['OT_s'].notna() & (egreso['OT_s'] != 'nan')]
 
-            # OT → [idbins2, ...]
-            ot_to_idbins = {}
-            for ot, grp in egreso.groupby('OT_s'):
-                ot_to_idbins[ot] = sorted(grp['IDBINS2'].unique().tolist())
+            # TARJA → OT  (used to tag each raw bin with its OT)
+            tarja_to_ot = {}
+            for _, row in egreso.iterrows():
+                tarja_to_ot[row['TARJA_s']] = row['OT_s']
 
-            # Reverse: idbins2 → OT (for enriching raw bins)
-            idbins_to_ot = {}
-            for ot, idbins_list in ot_to_idbins.items():
-                for idb in idbins_list:
-                    idbins_to_ot[idb] = ot
+            # OT → [tarjas]  (used to tag pallets with source bin list)
+            ot_to_tarjas = {}
+            for _, row in egreso.iterrows():
+                ot_to_tarjas.setdefault(row['OT_s'], [])
+                if row['TARJA_s'] not in ot_to_tarjas[row['OT_s']]:
+                    ot_to_tarjas[row['OT_s']].append(row['TARJA_s'])
 
-            # (a) Tag each raw bin with its OT so the upload endpoint can
-            #     auto-allocate it to the matching order line
+            print(f'✓ Historico: {len(tarja_to_ot)} bins mapeados a {len(ot_to_tarjas)} OTs')
+
+            # (a) Tag each raw bin with its OT
             if bins_ok and bins_data:
                 n_tagged = 0
                 for bin_rec in bins_data:
                     bid = str(bin_rec.get('bin_identifier', '')).strip()
-                    ot = idbins_to_ot.get(bid)
+                    ot = tarja_to_ot.get(bid)
                     if ot:
                         bin_rec['ot'] = ot
                         n_tagged += 1
-                print(f'✓ Historico: {n_tagged}/{len(bins_data)} raw bins enriquecidos con OT')
+                print(f'  → {n_tagged}/{len(bins_data)} bins en bodega vinculados a OT')
 
-            # (b) Tag each pallet with the raw bin IDs that went into its OT
+            # (b) Tag each pallet with the source bin tarjas for its OT
             if pallets_ok and pallets_data:
                 for pallet in pallets_data:
                     ot = pallet.get('ot', '')
-                    pallet['bin_identifiers'] = ot_to_idbins.get(ot, [])
+                    pallet['bin_identifiers'] = ot_to_tarjas.get(ot, [])
                 total_linked = sum(len(p.get('bin_identifiers', [])) for p in pallets_data)
-                print(f'✓ Historico: {total_linked} raw bins vinculados a pallets via OT')
+                print(f'  → {total_linked} bins vinculados a pallets via OT')
 
         except Exception as e:
             print(f'  WARN historico linking: {e}', file=sys.stderr)
