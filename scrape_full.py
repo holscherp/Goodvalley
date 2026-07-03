@@ -438,41 +438,61 @@ async def scrape_procesos_section(ctx):
 
         # Set Desde = 01/01/2026 so we capture the full season, not just today.
         # pWarehouse defaults both Desde and Hasta to today on page load.
-        _date_re = re.compile(r'\d{1,2}/\d{1,2}/\d{4}')
+        # Strategy 1: call ExtJS component API directly (bypasses DOM, triggers internal state)
+        _desde_set = False
         try:
-            all_inputs = await page.locator('input').all()
-            date_inputs = []
-            for inp in all_inputs:
-                try:
-                    v = await inp.input_value()
-                    if _date_re.search(v or ''):
-                        date_inputs.append((inp, v))
-                except Exception:
-                    pass
-            print(f'[PROC] Campos de fecha encontrados: {len(date_inputs)} → {[v for _,v in date_inputs]}')
-
-            if date_inputs:
-                # First date input = Desde → set to start of season
-                # Must use keyboard.type() not fill() so ExtJS registers each keystroke
-                desde_inp, _ = date_inputs[0]
-                await desde_inp.click()
-                await page.keyboard.press('Control+a')
-                await page.keyboard.type('01/01/2026')
-                await page.keyboard.press('Tab')
-                await page.wait_for_timeout(600)
-                print('[PROC] Desde → 01/01/2026')
-
-                # Log what Hasta is (leave it as-is, should be today)
-                if len(date_inputs) >= 2:
-                    hasta_inp, hasta_val = date_inputs[1]
-                    print(f'[PROC] Hasta → {hasta_val} (sin cambio)')
-
-            await page.wait_for_timeout(1000)
+            js_result = await page.evaluate("""
+                (function() {
+                    if (typeof Ext === 'undefined') return {ok: false, reason: 'no Ext'};
+                    var fields = Ext.ComponentQuery.query('datefield');
+                    if (!fields || fields.length === 0)
+                        return {ok: false, reason: 'no datefields'};
+                    var f = fields[0];
+                    var d = new Date(2026, 0, 1);
+                    f.setValue(d);
+                    f.fireEvent('change', f, d, null);
+                    return {ok: true, count: fields.length, raw: f.getRawValue()};
+                })()
+            """)
+            print(f'[PROC] ExtJS setValue → {js_result}')
+            if js_result and js_result.get('ok'):
+                print(f'[PROC] Desde → 01/01/2026 via ExtJS (raw={js_result.get("raw")})')
+                _desde_set = True
         except Exception as e:
-            print(f'[PROC] Error ajustando fecha Desde: {e}')
+            print(f'[PROC] ExtJS setValue falló: {e}')
 
-        # Screenshot after setting the date range
-        await page.screenshot(path=str(SCREENSHOT_DIR / 'proc_after_clear.png'))
+        # Strategy 2: keyboard fallback — triple-click to select all, then type
+        if not _desde_set:
+            _date_re = re.compile(r'\d{1,2}/\d{1,2}/\d{4}')
+            try:
+                all_inputs = await page.locator('input').all()
+                date_inputs = []
+                for inp in all_inputs:
+                    try:
+                        v = await inp.input_value()
+                        if _date_re.search(v or ''):
+                            date_inputs.append((inp, v))
+                    except Exception:
+                        pass
+                print(f'[PROC] Campos de fecha encontrados: {len(date_inputs)} → {[v for _,v in date_inputs]}')
+                if date_inputs:
+                    desde_inp, _ = date_inputs[0]
+                    await desde_inp.triple_click()
+                    await page.keyboard.type('01/01/2026')
+                    await page.keyboard.press('Tab')
+                    await page.wait_for_timeout(600)
+                    # Verify the field now shows the new value
+                    new_val = await date_inputs[0][0].input_value()
+                    print(f'[PROC] Desde → keyboard fallback → valor actual: {new_val}')
+                    if len(date_inputs) >= 2:
+                        print(f'[PROC] Hasta → {date_inputs[1][1]} (sin cambio)')
+            except Exception as e:
+                print(f'[PROC] Error ajustando fecha Desde (keyboard): {e}')
+
+        await page.wait_for_timeout(1000)
+
+        # Screenshot after setting the date range — lets us verify the field value visually
+        await page.screenshot(path=str(SCREENSHOT_DIR / 'proc_after_date.png'))
 
         rows, _ = await _capture_rows(page, 'PROC', btn_texts=['Actualizar', 'Buscar'])
 
