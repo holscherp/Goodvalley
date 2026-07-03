@@ -1,10 +1,23 @@
-import os
+import os, re as _re_app
 from datetime import datetime
 
 from flask import Flask, render_template, request, redirect, url_for, flash
 from sqlalchemy.exc import IntegrityError
 
 from db import db
+
+_OT_SUFFIX_RE = _re_app.compile(r'^(.+)-(\d{1,2})$')
+
+def _ot_base(ot):
+    """Return the base OT, stripping trailing -1 / -2 style line suffixes.
+    e.g. '790-0001-1' → '790-0001', '807-0005' → '807-0005' (unchanged)."""
+    m = _OT_SUFFIX_RE.match(ot or '')
+    if m:
+        # Only strip if the prefix itself looks like a real OT (contains a dash)
+        prefix = m.group(1)
+        if '-' in prefix:
+            return prefix
+    return ot
 
 PWAREHOUSE_URL  = os.environ.get('PWAREHOUSE_URL',  'http://190.211.168.247:8077')
 PWAREHOUSE_RUT  = os.environ.get('PWAREHOUSE_RUT',  '')
@@ -595,21 +608,20 @@ def create_app():
                         Proceso.query.delete(synchronize_session=False)
                         db.session.commit()
 
-                        # Group rows by OT
+                        # Group rows by base OT (strips trailing -1/-2 line suffix)
                         from collections import OrderedDict as _OD
                         by_ot = _OD()
                         for row in proc_data:
-                            ot = row.get('ot', '').strip()
-                            if not ot:
+                            ot_full = row.get('ot', '').strip()
+                            if not ot_full:
                                 continue
-                            by_ot.setdefault(ot, []).append(row)
+                            by_ot.setdefault(_ot_base(ot_full), []).append(row)
 
                         synced = datetime.utcnow()
                         ot_count = linea_count = 0
 
                         for ot, rows in by_ot.items():
-                            # Summary: use first row's tipoproceso/drying/temporada;
-                            # neto_egreso = sum of D-rows (or all rows if no D tag)
+                            # ot is already the base (suffix stripped above)
                             first = rows[0]
                             d_rows = [r for r in rows if (r.get('tipo_fila') or '').upper() == 'D']
                             summary_rows = d_rows if d_rows else rows
@@ -682,14 +694,14 @@ def create_app():
                             db.session.delete(po)
                         db.session.commit()
 
-                        # Group by OT
+                        # Group by base OT (strips trailing -1/-2 line suffix)
                         from collections import OrderedDict as _OD2
                         by_ot = _OD2()
                         for row in proc_rows:
-                            ot = row.get('ot', '').strip()
-                            if not ot:
+                            ot_full = row.get('ot', '').strip()
+                            if not ot_full:
                                 continue
-                            by_ot.setdefault(ot, []).append(row)
+                            by_ot.setdefault(_ot_base(ot_full), []).append(row)
 
                         def _parse_pt(tipoproceso):
                             t = (tipoproceso or '').lower()
