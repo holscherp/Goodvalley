@@ -330,46 +330,243 @@ class Allocation(db.Model):
     __table_args__ = (db.UniqueConstraint('bin_id', name='uq_alloc_bin_id'),)
 
 
+# ── Historico para Camilo — raw movements table ───────────────────────────────
+# One row per row in the Excel. Unique key: (idpsj, item).
+# This is the immutable source of truth for Procesos and Ordenes de Venta.
+
+WASTE_SERIES = {
+    'CAROZO', 'CONTRAMUESTRA', 'BASURA',
+    'DESCARTE HUMEDO CINTA', 'DESCARTE HUMEDO PISO',
+    'DESCARTE HUMEDO TOMRA', 'DESCARTE SECO', 'DESCARTE CN',
+    'DESCARTE HUMEDO', 'FIELD RUN',
+}
+
+
+class HistoricoMovimiento(db.Model):
+    __tablename__ = 'historico_movimientos'
+
+    id              = db.Column(db.Integer, primary_key=True)
+
+    # ── Identity / linking ───────────────────────────────────────────────────
+    idpsj           = db.Column(db.BigInteger, nullable=True)
+    item            = db.Column(db.Integer,    nullable=True)
+    cdgproducto     = db.Column(db.Integer,    nullable=True)
+    idtransaccion   = db.Column(db.BigInteger, nullable=True)
+    cdgcontenedor   = db.Column(db.Integer,    nullable=True)
+    cdgmvmnt        = db.Column(db.Integer,    nullable=True)
+    cdgclase        = db.Column(db.Integer,    nullable=True)
+    cdgbodega       = db.Column(db.Float,      nullable=True)
+    ot              = db.Column(db.String(50),  nullable=False, index=True)
+    idot            = db.Column(db.Integer,    nullable=True)
+    linea           = db.Column(db.Float,      nullable=True)
+    tipo            = db.Column(db.String(5),   nullable=True)   # D=detail, R=resumen
+    revision        = db.Column(db.Integer,    nullable=True)
+
+    # ── Movement ─────────────────────────────────────────────────────────────
+    movimiento      = db.Column(db.String(60),  nullable=True, index=True)
+    tipomovimiento  = db.Column(db.String(30),  nullable=True)
+    sestado         = db.Column(db.String(100), nullable=True)
+    estado          = db.Column(db.Integer,    nullable=True)
+    estadoitem      = db.Column(db.Float,      nullable=True)
+    sestadoitem     = db.Column(db.Float,      nullable=True)
+    fecha           = db.Column(db.DateTime,   nullable=True, index=True)
+    fechaproduccion = db.Column(db.DateTime,   nullable=True)
+    horaproduccion  = db.Column(db.String(20),  nullable=True)
+
+    # ── Product / bin identification ─────────────────────────────────────────
+    tarja           = db.Column(db.String(30),  nullable=True, index=True)
+    serie           = db.Column(db.String(60),  nullable=True)   # caliber or waste type
+    lote            = db.Column(db.String(60),  nullable=True)
+    guia            = db.Column(db.Float,      nullable=True)
+    producto        = db.Column(db.String(150), nullable=True)
+    temporada       = db.Column(db.Float,      nullable=True)
+
+    # ── Weights ───────────────────────────────────────────────────────────────
+    neto            = db.Column(db.Float, nullable=True)
+    bruto           = db.Column(db.Float, nullable=True)
+    tara            = db.Column(db.Float, nullable=True)
+    taracontenedor  = db.Column(db.Float, nullable=True)
+    unidades        = db.Column(db.Integer, nullable=True)
+    unidad          = db.Column(db.String(20), nullable=True)
+    u_lb            = db.Column(db.Float, nullable=True)
+    u_lb1           = db.Column(db.Float, nullable=True)
+    u_lb2           = db.Column(db.Float, nullable=True)
+    u_lb3           = db.Column(db.Float, nullable=True)
+    u_lb4           = db.Column(db.Float, nullable=True)
+
+    # ── Process type ──────────────────────────────────────────────────────────
+    tipoproceso     = db.Column(db.String(60),  nullable=True)
+    secado          = db.Column(db.String(60),  nullable=True)
+
+    # ── People ────────────────────────────────────────────────────────────────
+    productor       = db.Column(db.String(200), nullable=True)
+    rutproductor    = db.Column(db.String(30),  nullable=True)
+    exportador      = db.Column(db.String(150), nullable=True)
+    rutexportador   = db.Column(db.String(30),  nullable=True)
+    cliente         = db.Column(db.String(150), nullable=True)
+    usr             = db.Column(db.String(60),  nullable=True)
+    turno           = db.Column(db.Integer,    nullable=True)
+
+    # ── Location / container ──────────────────────────────────────────────────
+    contenedor      = db.Column(db.String(80),  nullable=True)
+    tipocontenedor  = db.Column(db.String(80),  nullable=True)
+    bodega          = db.Column(db.String(150), nullable=True)
+
+    # ── Treatment / quality ───────────────────────────────────────────────────
+    humedad         = db.Column(db.Float, nullable=True)
+    preservante     = db.Column(db.Float, nullable=True)
+    aceite          = db.Column(db.Float, nullable=True)
+    carozo_col      = db.Column(db.Float, nullable=True)   # col AW (numeric, distinct from SERIE=CAROZO)
+
+    # ── Pallet info ───────────────────────────────────────────────────────────
+    pallet_clase            = db.Column(db.String(20),  nullable=True)
+    s_pallet_clase          = db.Column(db.String(100), nullable=True)
+    pallet_estado_ot        = db.Column(db.String(20),  nullable=True)
+    s_pallet_estado_ot      = db.Column(db.String(100), nullable=True)
+    pallet_estado_vigente   = db.Column(db.String(20),  nullable=True)
+    s_pallet_estado_vigente = db.Column(db.String(100), nullable=True)
+
+    # ── Quality checks ────────────────────────────────────────────────────────
+    presenciametales        = db.Column(db.String(20),  nullable=True)
+    s_presenciametales      = db.Column(db.String(100), nullable=True)
+
+    # ── References ────────────────────────────────────────────────────────────
+    idbins2             = db.Column(db.String(30),  nullable=True)
+    count_ticket        = db.Column(db.Float,      nullable=True)
+    ticket_pesaje       = db.Column(db.Float,      nullable=True)
+    documentoreferencia = db.Column(db.String(150), nullable=True)
+    observaciones       = db.Column(db.Text,       nullable=True)
+    idoe                = db.Column(db.Float,      nullable=True)
+    idsb                = db.Column(db.Float,      nullable=True)
+    sb                  = db.Column(db.Float,      nullable=True)
+
+    # ── Reprocess / repack cross-reference IDs ────────────────────────────────
+    idreproceso     = db.Column(db.Float, nullable=True)
+    idrepaletizaje  = db.Column(db.Float, nullable=True)
+    idreembalaje    = db.Column(db.Float, nullable=True)
+    idreenvasado    = db.Column(db.Float, nullable=True)
+
+    # ── Warehouse location ────────────────────────────────────────────────────
+    x               = db.Column(db.String(10),  nullable=True)
+    y               = db.Column(db.Float,       nullable=True)
+    z               = db.Column(db.Float,       nullable=True)
+    direccion       = db.Column(db.Float,       nullable=True)
+
+    # ── Upsert key ────────────────────────────────────────────────────────────
+    __table_args__ = (
+        db.UniqueConstraint('idpsj', 'item', name='uq_hist_idpsj_item'),
+    )
+
+    @property
+    def is_waste(self):
+        return (self.serie or '').upper() in WASTE_SERIES or \
+               'DESCARTE' in (self.serie or '').upper()
+
+    @property
+    def temporada_str(self):
+        try:
+            return str(int(self.temporada)) if self.temporada else None
+        except Exception:
+            return None
+
+    @property
+    def fecha_str(self):
+        try:
+            return self.fecha.strftime('%Y-%m-%d') if self.fecha else None
+        except Exception:
+            return None
+
+
+# ── Proceso summary (one per OT with processing movements) ───────────────────
+
 class Proceso(db.Model):
     __tablename__ = 'procesos'
 
-    id          = db.Column(db.Integer, primary_key=True)
-    ot          = db.Column(db.String(50),  nullable=False)
-    idot        = db.Column(db.String(50),  nullable=True)
-    tipoproceso = db.Column(db.String(50),  nullable=True)
-    drying      = db.Column(db.String(30),  nullable=True)
-    temporada   = db.Column(db.String(10),  nullable=True)
-    neto_egreso = db.Column(db.Float,       nullable=True)
-    serie       = db.Column(db.String(50),  nullable=True)
-    synced_at   = db.Column(db.DateTime,    default=datetime.utcnow)
-
-    lineas = db.relationship('ProcesoLinea', backref='proceso',
-                             cascade='all, delete-orphan', lazy='select')
-
-    @property
-    def drying_label(self):
-        return DRYING_LABELS.get(self.drying, self.drying or '—')
-
-
-class ProcesoLinea(db.Model):
-    __tablename__ = 'proceso_lineas'
-
-    id          = db.Column(db.Integer, primary_key=True)
-    proceso_id  = db.Column(db.Integer, db.ForeignKey('procesos.id'), nullable=False)
-    ot          = db.Column(db.String(50),  nullable=False)
-    tipo_fila   = db.Column(db.String(5),   nullable=True)   # 'D' or 'R'
-    idot        = db.Column(db.String(50),  nullable=True)
-    fecha       = db.Column(db.String(50),  nullable=True)
-    tipoproceso = db.Column(db.String(50),  nullable=True)
-    productor   = db.Column(db.String(200), nullable=True)
-    serie       = db.Column(db.String(50),  nullable=True)
-    drying      = db.Column(db.String(30),  nullable=True)
-    temporada   = db.Column(db.String(20),  nullable=True)
-    neto_egreso = db.Column(db.Float,       nullable=True)
+    id              = db.Column(db.Integer, primary_key=True)
+    ot              = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    idot            = db.Column(db.Integer,  nullable=True)
+    temporada       = db.Column(db.String(10), nullable=True)
+    tipoproceso     = db.Column(db.String(60), nullable=True)
+    secado          = db.Column(db.String(100), nullable=True)   # comma-joined if multiple
+    fecha_inicio    = db.Column(db.DateTime,  nullable=True)
+    fecha_fin       = db.Column(db.DateTime,  nullable=True)
+    bins_entrada    = db.Column(db.Integer,  nullable=True)
+    kg_entrada      = db.Column(db.Float,    nullable=True)
+    kg_salida_bueno = db.Column(db.Float,    nullable=True)
+    kg_carozo       = db.Column(db.Float,    nullable=True)
+    kg_descarte     = db.Column(db.Float,    nullable=True)
+    kg_contramuestra = db.Column(db.Float,   nullable=True)
+    kg_embarcado    = db.Column(db.Float,    nullable=True)
+    rendimiento_pct = db.Column(db.Float,    nullable=True)
+    productores     = db.Column(db.Text,     nullable=True)   # comma-joined
+    estado          = db.Column(db.String(40), nullable=True)
+    imported_at     = db.Column(db.DateTime, default=datetime.utcnow)
 
     @property
-    def drying_label(self):
-        return DRYING_LABELS.get(self.drying, self.drying or '—')
+    def fecha_inicio_str(self):
+        try:
+            return self.fecha_inicio.strftime('%Y-%m-%d') if self.fecha_inicio else '—'
+        except Exception:
+            return '—'
+
+    @property
+    def fecha_fin_str(self):
+        try:
+            return self.fecha_fin.strftime('%Y-%m-%d') if self.fecha_fin else '—'
+        except Exception:
+            return '—'
+
+    @property
+    def tipoproceso_label(self):
+        return PRODUCT_TYPE_LABELS.get((self.tipoproceso or '').lower(), self.tipoproceso or '—')
+
+    @property
+    def rendimiento_str(self):
+        if self.rendimiento_pct is None:
+            return '—'
+        return f'{self.rendimiento_pct:.1f}%'
+
+
+# ── Orden de Venta summary (one per OT with EMBARQUE movements) ──────────────
+
+class OrdenDeVenta(db.Model):
+    __tablename__ = 'ordenes_de_venta'
+
+    id                   = db.Column(db.Integer, primary_key=True)
+    ot                   = db.Column(db.String(50), nullable=False, index=True)
+    idot                 = db.Column(db.Integer,  nullable=True)
+    temporada            = db.Column(db.String(10), nullable=True)
+    tipoproceso          = db.Column(db.String(60), nullable=True)
+    cliente              = db.Column(db.String(150), nullable=True, index=True)
+    calibres             = db.Column(db.String(200), nullable=True)   # comma-joined SERIE values
+    kg_embarcado         = db.Column(db.Float,  nullable=True)
+    fecha_primer_embarque = db.Column(db.DateTime, nullable=True)
+    fecha_ultimo_embarque = db.Column(db.DateTime, nullable=True)
+    proceso_id           = db.Column(db.Integer, db.ForeignKey('procesos.id'), nullable=True)
+    imported_at          = db.Column(db.DateTime, default=datetime.utcnow)
+
+    proceso = db.relationship('Proceso', backref='ordenes_de_venta', foreign_keys=[proceso_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('ot', name='uq_odv_ot'),
+    )
+
+    @property
+    def fecha_embarque_str(self):
+        try:
+            if self.fecha_primer_embarque and self.fecha_ultimo_embarque:
+                s = self.fecha_primer_embarque.strftime('%Y-%m-%d')
+                e = self.fecha_ultimo_embarque.strftime('%Y-%m-%d')
+                return s if s == e else f'{s} → {e}'
+            elif self.fecha_primer_embarque:
+                return self.fecha_primer_embarque.strftime('%Y-%m-%d')
+            return '—'
+        except Exception:
+            return '—'
+
+    @property
+    def tipoproceso_label(self):
+        return PRODUCT_TYPE_LABELS.get((self.tipoproceso or '').lower(), self.tipoproceso or '—')
 
 
 class Pallet(db.Model):

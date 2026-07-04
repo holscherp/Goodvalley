@@ -1,78 +1,119 @@
 {% extends 'base.html' %}
-{% block title %}IDOT {{ proc.idot or proc.ot }} · Procesos · Goodvalley{% endblock %}
+{% block title %}{{ proc.ot }} · Procesos · Goodvalley{% endblock %}
 
 {% block content %}
 <div style="margin-bottom:18px">
   <a href="{{ url_for('list_procesos') }}" style="color:var(--purple);font-size:13px">← Procesos</a>
 </div>
 
-<div class="row-between" style="align-items:flex-start">
+<div class="row-between" style="align-items:flex-start;flex-wrap:wrap;gap:16px">
   <div>
-    <h1 style="font-size:1.5rem;margin-bottom:4px">
-      IDOT {{ proc.idot or proc.ot }}
-    </h1>
+    <h1 style="font-size:1.5rem;margin-bottom:4px">OT {{ proc.ot }}</h1>
     <p class="muted" style="margin:0">
-      OT {{ proc.ot }}
-      {% if proc.tipoproceso %} · {{ proc.tipoproceso }}{% endif %}
-      {% if proc.drying %}
-        · <span class="pill pill-{{ proc.drying }}">{{ proc.drying_label }}</span>
-      {% endif %}
+      {% if proc.tipoproceso %}{{ proc.tipoproceso }}{% endif %}
+      {% if proc.secado %} · {{ proc.secado }}{% endif %}
       {% if proc.temporada %} · Temporada {{ proc.temporada }}{% endif %}
+      {% if proc.productores %} · {{ proc.productores }}{% endif %}
     </p>
   </div>
-  <div class="cards" style="margin:0;gap:10px">
+  <div class="cards" style="margin:0;gap:10px;flex-wrap:wrap">
     <div class="card" style="min-width:0;padding:12px 18px;text-align:right">
-      <div class="big">{{ "{:,.1f}".format(proc.neto_egreso) if proc.neto_egreso else '—' }}</div>
-      <div class="lbl">kg neto total</div>
+      <div class="big">{{ proc.bins_entrada or '—' }}</div>
+      <div class="lbl">bins entrada</div>
     </div>
     <div class="card" style="min-width:0;padding:12px 18px;text-align:right">
-      {% set d_rows = proc.lineas | selectattr('tipo_fila', 'equalto', 'D') | list %}
-      <div class="big">{{ d_rows | length or proc.lineas | length }}</div>
-      <div class="lbl">líneas</div>
+      <div class="big">{{ "{:,.1f}".format(proc.kg_entrada) if proc.kg_entrada else '—' }}</div>
+      <div class="lbl">kg entrada</div>
+    </div>
+    <div class="card" style="min-width:0;padding:12px 18px;text-align:right">
+      <div class="big">{{ "{:,.1f}".format(proc.kg_salida_bueno) if proc.kg_salida_bueno else '—' }}</div>
+      <div class="lbl">kg salida (bueno)</div>
+    </div>
+    <div class="card" style="min-width:0;padding:12px 18px;text-align:right">
+      <div class="big">{{ proc.rendimiento_str }}</div>
+      <div class="lbl">rendimiento</div>
     </div>
   </div>
 </div>
 
-{% set d_rows = proc.lineas | selectattr('tipo_fila', 'equalto', 'D') | list %}
-{% set display_rows = d_rows if d_rows else proc.lineas %}
+<!-- Summary row -->
+<div class="cards" style="margin:20px 0 0;gap:10px;flex-wrap:wrap">
+  {% if proc.kg_carozo %}
+  <div class="card" style="min-width:0;padding:10px 16px;text-align:right">
+    <div style="font-size:1.1rem;font-weight:700">{{ "{:,.1f}".format(proc.kg_carozo) }} kg</div>
+    <div class="lbl">carozo</div>
+  </div>
+  {% endif %}
+  {% if proc.kg_descarte %}
+  <div class="card" style="min-width:0;padding:10px 16px;text-align:right">
+    <div style="font-size:1.1rem;font-weight:700">{{ "{:,.1f}".format(proc.kg_descarte) }} kg</div>
+    <div class="lbl">descarte</div>
+  </div>
+  {% endif %}
+  {% if proc.kg_contramuestra %}
+  <div class="card" style="min-width:0;padding:10px 16px;text-align:right">
+    <div style="font-size:1.1rem;font-weight:700">{{ "{:,.1f}".format(proc.kg_contramuestra) }} kg</div>
+    <div class="lbl">contramuestra</div>
+  </div>
+  {% endif %}
+  {% if proc.kg_embarcado %}
+  <div class="card" style="min-width:0;padding:10px 16px;text-align:right">
+    <div style="font-size:1.1rem;font-weight:700">{{ "{:,.1f}".format(proc.kg_embarcado) }} kg</div>
+    <div class="lbl">embarcado</div>
+  </div>
+  {% endif %}
+  <div class="card" style="min-width:0;padding:10px 16px;text-align:right">
+    <div style="font-size:1rem;font-weight:700">{{ proc.fecha_inicio_str }}</div>
+    <div class="lbl">inicio</div>
+  </div>
+  <div class="card" style="min-width:0;padding:10px 16px;text-align:right">
+    <div style="font-size:1rem;font-weight:700">{{ proc.fecha_fin_str }}</div>
+    <div class="lbl">fin</div>
+  </div>
+</div>
 
-{% if display_rows %}
-<table class="grid tight" style="margin-top:24px">
+<!-- Movements table -->
+{% set mov_types = movimientos | map(attribute='movimiento') | unique | list %}
+
+{% if movimientos %}
+<h2 style="margin:28px 0 10px;font-size:1rem">Todos los movimientos ({{ movimientos|length }})</h2>
+<table class="grid tight">
   <thead><tr>
     <th>Fecha</th>
+    <th>Movimiento</th>
+    <th>Tarja</th>
+    <th>Calibre / Serie</th>
+    <th>Producto</th>
     <th>Productor</th>
-    <th>Calibre</th>
-    <th>Tipo de Secado</th>
-    <th>Temporada</th>
-    <th class="num">Kilos</th>
+    <th class="num">Neto (kg)</th>
+    <th>Bodega</th>
   </tr></thead>
   <tbody>
-  {% for l in display_rows %}
+  {% for m in movimientos %}
   <tr>
-    <td class="mono" style="font-size:12px">{{ l.fecha or '—' }}</td>
-    <td>{{ l.productor or '—' }}</td>
-    <td class="mono">{{ l.serie or '—' }}</td>
+    <td class="mono" style="font-size:12px">{{ m.fecha_str or '—' }}</td>
     <td>
-      {% if l.drying %}
-        <span class="pill pill-{{ l.drying }}">{{ l.drying_label }}</span>
-      {% else %}—{% endif %}
+      <span style="font-size:11px;font-weight:600;
+        color:{% if 'EGRESO A PROCESO' in (m.movimiento or '') %}#e67e22
+              {% elif 'INGRESO DESDE PROCESO' in (m.movimiento or '') %}#27ae60
+              {% elif 'EMBARQUE' in (m.movimiento or '') %}#8e44ad
+              {% else %}var(--fg){% endif %}">
+        {{ m.movimiento or '—' }}
+      </span>
     </td>
-    <td>{{ l.temporada or '—' }}</td>
-    <td class="num"><strong>{{ "{:,.1f}".format(l.neto_egreso) if l.neto_egreso else '—' }}</strong></td>
+    <td class="mono" style="font-size:12px">{{ m.tarja or '—' }}</td>
+    <td class="mono">{{ m.serie or '—' }}</td>
+    <td style="font-size:12px">{{ m.producto or '—' }}</td>
+    <td style="font-size:12px">{{ m.productor or '—' }}</td>
+    <td class="num"><strong>{{ "{:,.1f}".format(m.neto) if m.neto else '—' }}</strong></td>
+    <td style="font-size:12px">{{ m.bodega or '—' }}</td>
   </tr>
   {% endfor %}
   </tbody>
-  <tfoot>
-    <tr style="font-weight:600;border-top:2px solid var(--border)">
-      <td colspan="5" style="text-align:right;padding-right:12px">Total</td>
-      <td class="num">{{ "{:,.1f}".format(display_rows | sum(attribute='neto_egreso') or 0) }}</td>
-    </tr>
-  </tfoot>
 </table>
 {% else %}
 <div class="empty" style="margin-top:24px">
-  <p>No hay líneas de detalle para esta OT.</p>
-  <p class="muted" style="margin-top:6px">Hacé un Sync Completo para importar el detalle desde pWarehouse.</p>
+  <p>No hay movimientos registrados para esta OT.</p>
 </div>
 {% endif %}
 {% endblock %}

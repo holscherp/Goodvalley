@@ -4,57 +4,94 @@
 {% block content %}
 <div class="row-between">
   <div>
-    <h1>Informe Procesos</h1>
+    <h1>Procesos</h1>
     <p class="muted">
-      Órdenes de trabajo procesadas en planta. Se actualiza con Sync Completo.
-      {% if last_sync %}· última sync {{ last_sync.strftime('%d-%m-%Y %H:%M') }}{% endif %}
+      Órdenes de trabajo de producción, basado en Histórico para Camilo.
+      {% if last_imported %}· importado {{ last_imported.strftime('%d-%m-%Y %H:%M') }}{% endif %}
     </p>
   </div>
-  <div class="cards" style="margin:0">
+  <div class="cards" style="margin:0;gap:10px">
     <div class="card" style="min-width:0;padding:12px 18px">
       <div class="big">{{ procesos|length }}</div>
-      <div class="lbl">órdenes registradas</div>
+      <div class="lbl">OTs de proceso</div>
+    </div>
+    {% set total_kg_in = procesos | selectattr('kg_entrada') | sum(attribute='kg_entrada') %}
+    {% set total_kg_out = procesos | selectattr('kg_salida_bueno') | sum(attribute='kg_salida_bueno') %}
+    <div class="card" style="min-width:0;padding:12px 18px">
+      <div class="big">{{ "{:,.0f}".format(total_kg_in) }}</div>
+      <div class="lbl">kg entrada total</div>
     </div>
   </div>
 </div>
 
 {% if procesos %}
-<table class="grid tight">
+<div style="margin-bottom:10px">
+  <input id="proc-search" type="text" placeholder="Buscar OT, tipo, productor…"
+         style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
+                background:var(--card);color:var(--fg);font-size:13px;width:280px"
+         oninput="filterProcesos(this.value)">
+</div>
+<table class="grid tight" id="proc-table">
   <thead><tr>
-    <th>IDOT</th>
     <th>OT</th>
     <th>Tipo Proceso</th>
     <th>Secado</th>
     <th>Temporada</th>
-    <th class="num">Neto Egreso (kg)</th>
-    <th class="num">Líneas</th>
+    <th class="num">Bins</th>
+    <th class="num">Kg Entrada</th>
+    <th class="num">Kg Salida</th>
+    <th class="num">Rend.</th>
+    <th>Estado</th>
+    <th>Productores</th>
+    <th>Inicio</th>
+    <th>Fin</th>
   </tr></thead>
   <tbody>
   {% for p in procesos %}
   <tr style="cursor:pointer" onclick="location.href='{{ url_for('proceso_detail', ot=p.ot) }}'">
     <td class="mono" style="font-weight:600">
       <a href="{{ url_for('proceso_detail', ot=p.ot) }}" style="color:var(--purple);text-decoration:none">
-        {{ p.idot or p.ot }}
+        {{ p.ot }}
       </a>
     </td>
-    <td class="mono" style="color:var(--muted);font-size:12px">{{ p.ot }}</td>
     <td>{{ p.tipoproceso or '—' }}</td>
-    <td>
-      {% if p.drying %}
-        <span class="pill pill-{{ p.drying }}">{{ p.drying_label }}</span>
+    <td>{{ p.secado or '—' }}</td>
+    <td>{{ p.temporada or '—' }}</td>
+    <td class="num">{{ p.bins_entrada or '—' }}</td>
+    <td class="num">{{ "{:,.1f}".format(p.kg_entrada) if p.kg_entrada else '—' }}</td>
+    <td class="num">{{ "{:,.1f}".format(p.kg_salida_bueno) if p.kg_salida_bueno else '—' }}</td>
+    <td class="num">
+      {% if p.rendimiento_pct is not none %}
+        <span style="color:{% if p.rendimiento_pct > 100 %}#e67e22{% elif p.rendimiento_pct < 70 %}#e74c3c{% else %}var(--fg){% endif %}">
+          {{ "%.1f"|format(p.rendimiento_pct) }}%
+        </span>
       {% else %}—{% endif %}
     </td>
-    <td>{{ p.temporada or '—' }}</td>
-    <td class="num">{{ "{:,.1f}".format(p.neto_egreso) if p.neto_egreso else '—' }}</td>
-    <td class="num">{{ p.lineas|length }}</td>
+    <td>
+      <span class="pill pill-{{ p.estado|replace(' ','_') }}">{{ p.estado or '—' }}</span>
+    </td>
+    <td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+      {{ p.productores or '—' }}</td>
+    <td class="mono" style="font-size:12px">{{ p.fecha_inicio_str }}</td>
+    <td class="mono" style="font-size:12px">{{ p.fecha_fin_str }}</td>
   </tr>
   {% endfor %}
   </tbody>
 </table>
+<script>
+function filterProcesos(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('#proc-table tbody tr').forEach(function(tr) {
+    tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+</script>
 {% else %}
 <div class="empty">
-  <p>No hay datos de procesos todavía.</p>
-  <p class="muted" style="margin-top:6px">Presioná <strong>Actualizar → Sync Completo</strong> para traer los datos desde pWarehouse.</p>
+  <p>No hay procesos importados todavía.</p>
+  <p class="muted" style="margin-top:6px">
+    Presioná <strong>Actualizar → Subir Histórico</strong> para importar el archivo Excel.
+  </p>
 </div>
 {% endif %}
 {% endblock %}

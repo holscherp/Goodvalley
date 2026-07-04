@@ -147,7 +147,8 @@ def create_app():
     db.init_app(app)
 
     with app.app_context():
-        from models import Bin, Order, OrderLine, Allocation, Excedente, YieldOverride, Proceso, ProcesoLinea, Pallet  # noqa: F401
+        from models import Bin, Order, OrderLine, Allocation, Excedente, YieldOverride, Proceso, HistoricoMovimiento, OrdenDeVenta, Pallet  # noqa: F401
+        _pre_migrate(db)
         db.create_all()
 
         _migrate(db)
@@ -591,91 +592,6 @@ def create_app():
                 except Exception as e:
                     with open(log_path, 'a') as lf:
                         lf.write(f'✗ Error importando pallets: {e}\n')
-                        lf.flush()
-
-            # ── Import procesos to Proceso + ProcesoLinea tables ──────────
-            if procesos_path.exists():
-                try:
-                    proc_data = _json.loads(procesos_path.read_text())
-                    with open(log_path, 'a') as lf:
-                        lf.write(f'► Importando {len(proc_data)} líneas de procesos...\n')
-                        lf.flush()
-                    with _app.app_context():
-                        from models import Proceso, ProcesoLinea
-
-                        # Full clear-and-reinsert
-                        ProcesoLinea.query.delete(synchronize_session=False)
-                        Proceso.query.delete(synchronize_session=False)
-                        db.session.commit()
-
-                        # Group rows by base OT (strips trailing -1/-2 line suffix)
-                        from collections import OrderedDict as _OD
-                        by_ot = _OD()
-                        for row in proc_data:
-                            ot_full = row.get('ot', '').strip()
-                            if not ot_full:
-                                continue
-                            by_ot.setdefault(_ot_base(ot_full), []).append(row)
-
-                        synced = datetime.utcnow()
-                        ot_count = linea_count = 0
-
-                        for ot, rows in by_ot.items():
-                            # ot is already the base (suffix stripped above)
-                            first = rows[0]
-                            d_rows = [r for r in rows if (r.get('tipo_fila') or '').upper() == 'D']
-                            summary_rows = d_rows if d_rows else rows
-                            total_neto = sum(
-                                r['neto_egreso'] for r in summary_rows
-                                if r.get('neto_egreso') is not None
-                            ) or None
-
-                            idot_val = next(
-                                (r.get('idot') for r in rows if r.get('idot')), None)
-
-                            proc = Proceso(
-                                ot=ot,
-                                idot=idot_val,
-                                tipoproceso=first.get('tipoproceso'),
-                                drying=first.get('drying'),
-                                temporada=first.get('temporada'),
-                                neto_egreso=total_neto,
-                                serie=first.get('serie'),
-                                synced_at=synced,
-                            )
-                            db.session.add(proc)
-                            db.session.flush()
-                            ot_count += 1
-
-                            for row in rows:
-                                db.session.add(ProcesoLinea(
-                                    proceso_id=proc.id,
-                                    ot=ot,
-                                    tipo_fila=row.get('tipo_fila'),
-                                    idot=row.get('idot'),
-                                    fecha=row.get('fecha'),
-                                    tipoproceso=row.get('tipoproceso'),
-                                    productor=row.get('productor'),
-                                    serie=row.get('serie'),
-                                    drying=row.get('drying'),
-                                    temporada=row.get('temporada'),
-                                    neto_egreso=row.get('neto_egreso'),
-                                ))
-                                linea_count += 1
-
-                            if ot_count % 100 == 0:
-                                db.session.commit()
-
-                        db.session.commit()
-
-                    with open(log_path, 'a') as lf:
-                        lf.write(
-                            f'✓ Procesos: {ot_count} OTs, {linea_count} líneas importadas.\n'
-                        )
-                        lf.flush()
-                except Exception as e:
-                    with open(log_path, 'a') as lf:
-                        lf.write(f'✗ Error importando procesos: {e}\n')
                         lf.flush()
 
             # ── Create Orders from Informe Procesos ───────────────────────
@@ -1792,20 +1708,313 @@ def create_app():
                         'errors': errors,
                         'orders': results})
 
-    # ── Procesos & Pallets ────────────────────────────────────────────────────
+    # ── Procesos (from Histórico) ─────────────────────────────────────────────
 
     @app.route('/procesos')
     def list_procesos():
         from models import Proceso
-        procesos  = Proceso.query.order_by(Proceso.ot).all()
-        last_sync = procesos[0].synced_at if procesos else None
-        return render_template('procesos.html', procesos=procesos, last_sync=last_sync)
+        procesos = Proceso.query.order_by(Proceso.ot).all()
+        last_imported = procesos[0].imported_at if procesos else None
+        return render_template('procesos.html', procesos=procesos, last_imported=last_imported)
 
     @app.route('/procesos/<path:ot>')
     def proceso_detail(ot):
-        from models import Proceso
+        from models import Proceso, HistoricoMovimiento
         proc = Proceso.query.filter_by(ot=ot).first_or_404()
-        return render_template('proceso_detail.html', proc=proc)
+        movimientos = (
+            HistoricoMovimiento.query
+            .filter_by(ot=ot)
+            .order_by(HistoricoMovimiento.fecha)
+            .all()
+        )
+        return render_template('proceso_detail.html', proc=proc, movimientos=movimientos)
+
+    # ── Órdenes de Venta (from Histórico) ────────────────────────────────────
+
+    @app.route('/ordenes-de-venta')
+    def list_ordenes_de_venta():
+        from models import OrdenDeVenta
+        ordenes = OrdenDeVenta.query.order_by(OrdenDeVenta.fecha_primer_embarque.desc().nullslast()).all()
+        last_imported = ordenes[0].imported_at if ordenes else None
+        return render_template('ordenes_de_venta.html', ordenes=ordenes, last_imported=last_imported)
+
+    @app.route('/ordenes-de-venta/<path:ot>')
+    def orden_de_venta_detail(ot):
+        from models import OrdenDeVenta, HistoricoMovimiento
+        orden = OrdenDeVenta.query.filter_by(ot=ot).first_or_404()
+        embarques = (
+            HistoricoMovimiento.query
+            .filter_by(ot=ot, movimiento='EMBARQUE')
+            .order_by(HistoricoMovimiento.fecha)
+            .all()
+        )
+        return render_template('orden_de_venta_detail.html', orden=orden, embarques=embarques)
+
+    # ── Import Histórico ──────────────────────────────────────────────────────
+
+    @app.route('/admin/import-historico', methods=['POST'])
+    def import_historico():
+        import pandas as _pd
+        from io import BytesIO
+        from models import HistoricoMovimiento, Proceso, OrdenDeVenta, WASTE_SERIES
+
+        f = request.files.get('historico_file')
+        if not f:
+            flash('No se seleccionó archivo.', 'err')
+            return redirect(url_for('list_procesos'))
+
+        try:
+            df = _pd.read_excel(BytesIO(f.read()), engine='openpyxl')
+        except Exception as e:
+            flash(f'Error al leer el archivo: {e}', 'err')
+            return redirect(url_for('list_procesos'))
+
+        def _v(val):
+            try:
+                if _pd.isna(val):
+                    return None
+            except Exception:
+                pass
+            return val
+
+        def _str(val):
+            v = _v(val)
+            return str(v).strip() if v is not None else None
+
+        def _int(val):
+            v = _v(val)
+            try:
+                return int(v) if v is not None else None
+            except Exception:
+                return None
+
+        def _float(val):
+            v = _v(val)
+            try:
+                return float(v) if v is not None else None
+            except Exception:
+                return None
+
+        # ── 1. Full-replace historico_movimientos ─────────────────────────
+        HistoricoMovimiento.query.delete(synchronize_session=False)
+        db.session.commit()
+
+        records = []
+        for _, row in df.iterrows():
+            records.append({
+                'idpsj':           _float(row.get('IDPSJ')),
+                'item':            _int(row.get('ITEM')),
+                'cdgproducto':     _int(row.get('CDGPRODUCTO')),
+                'idtransaccion':   _float(row.get('IDTRANSACCION')),
+                'cdgcontenedor':   _int(row.get('CDGCONTENEDOR')),
+                'cdgmvmnt':        _int(row.get('CDGMVMNT')),
+                'cdgclase':        _int(row.get('CDGCLASE')),
+                'cdgbodega':       _float(row.get('CDGBODEGA')),
+                'ot':              _str(row.get('OT')) or '',
+                'idot':            _int(row.get('IDOT')),
+                'linea':           _float(row.get('LINEA')),
+                'tipo':            _str(row.get('TIPO')),
+                'revision':        _int(row.get('REVISION')),
+                'movimiento':      _str(row.get('MOVIMIENTO')),
+                'tipomovimiento':  _str(row.get('TIPOMOVIMIENTO')),
+                'sestado':         _str(row.get('SESTADO')),
+                'estado':          _int(row.get('ESTADO')),
+                'estadoitem':      _float(row.get('ESTADOITEM')),
+                'sestadoitem':     _float(row.get('SESTADOITEM')),
+                'fecha':           _v(row.get('FECHA')),
+                'fechaproduccion': _v(row.get('FECHAPRODUCCION')),
+                'horaproduccion':  _str(row.get('HORAPRODUCCION')),
+                'tarja':           _str(row.get('TARJA')),
+                'serie':           _str(row.get('SERIE')),
+                'lote':            _str(row.get('LOTE')),
+                'guia':            _float(row.get('GUIA')),
+                'producto':        _str(row.get('PRODUCTO')),
+                'temporada':       _float(row.get('TEMPORADA')),
+                'neto':            _float(row.get('NETO')),
+                'bruto':           _float(row.get('BRUTO')),
+                'tara':            _float(row.get('TARA')),
+                'taracontenedor':  _float(row.get('TARACONTENEDOR')),
+                'unidades':        _int(row.get('UNIDADES')),
+                'unidad':          _str(row.get('UNIDAD')),
+                'u_lb':            _float(row.get('U_LB')),
+                'u_lb1':           _float(row.get('U_LB1')),
+                'u_lb2':           _float(row.get('U_LB2')),
+                'u_lb3':           _float(row.get('U_LB3')),
+                'u_lb4':           _float(row.get('U_LB4')),
+                'tipoproceso':     _str(row.get('TIPOPROCESO')),
+                'secado':          _str(row.get('SECADO')),
+                'productor':       _str(row.get('PRODUCTOR')),
+                'rutproductor':    _str(row.get('RUTPRODUCTOR')),
+                'exportador':      _str(row.get('EXPORTADOR')),
+                'rutexportador':   _str(row.get('RUTEXPORTADOR')),
+                'cliente':         _str(row.get('CLIENTE')),
+                'usr':             _str(row.get('USR')),
+                'turno':           _int(row.get('TURNO')),
+                'contenedor':      _str(row.get('CONTENEDOR')),
+                'tipocontenedor':  _str(row.get('TIPOCONTENEDOR')),
+                'bodega':          _str(row.get('BODEGA')),
+                'humedad':         _float(row.get('HUMEDAD')),
+                'preservante':     _float(row.get('PRESERVANTE')),
+                'aceite':          _float(row.get('ACEITE')),
+                'carozo_col':      _float(row.get('CAROZO')),
+                'pallet_clase':    _str(row.get('PALLET_CLASE')),
+                's_pallet_clase':  _str(row.get('S_PALLET_CLASE')),
+                'pallet_estado_ot': _str(row.get('PALLET_ESTADO_OT')),
+                's_pallet_estado_ot': _str(row.get('S_PALLET_ESTADO_OT')),
+                'pallet_estado_vigente': _str(row.get('PALLET_ESTADO_VIGENTE')),
+                's_pallet_estado_vigente': _str(row.get('S_PALLET_ESTADO_VIGENTE')),
+                'presenciametales': _str(row.get('PRESENCIAMETALES')),
+                's_presenciametales': _str(row.get('S_PRESENCIAMETALES')),
+                'idbins2':         _str(row.get('IDBINS2')),
+                'count_ticket':    _float(row.get('COUNT_TICKET')),
+                'ticket_pesaje':   _float(row.get('TICKET_PESAJE')),
+                'documentoreferencia': _str(row.get('DOCUMENTOREFERENCIA')),
+                'observaciones':   _str(row.get('OBSERVACIONES')),
+                'idoe':            _float(row.get('IDOE')),
+                'idsb':            _float(row.get('IDSB')),
+                'sb':              _float(row.get('SB')),
+                'idreproceso':     _float(row.get('IDREPROCESO')),
+                'idrepaletizaje':  _float(row.get('IDREPALETIZAJE')),
+                'idreembalaje':    _float(row.get('IDREEMBALAJE')),
+                'idreenvasado':    _float(row.get('IDREENVASADO')),
+                'x':               _str(row.get('X')),
+                'y':               _float(row.get('Y')),
+                'z':               _float(row.get('Z')),
+                'direccion':       _float(row.get('DIRECCION')),
+            })
+
+        from sqlalchemy import insert as _sa_insert
+        db.session.execute(_sa_insert(HistoricoMovimiento), records)
+        db.session.commit()
+        n_rows = len(records)
+
+        # ── 2. Rebuild Proceso summaries ──────────────────────────────────
+        Proceso.query.delete(synchronize_session=False)
+        db.session.commit()
+
+        proc_in_movs  = {'EGRESO A PROCESO'}
+        proc_out_movs = {'INGRESO DESDE PROCESO'}
+
+        mov_col = df['MOVIMIENTO'].fillna('')
+        ot_col  = df['OT'].fillna('').astype(str).str.strip()
+        serie_up = df['SERIE'].fillna('').str.upper()
+
+        proc_ots = sorted(set(ot_col[mov_col.isin(proc_in_movs)]))
+        now = datetime.utcnow()
+        proc_records = []
+
+        for ot in proc_ots:
+            mask = ot_col == ot
+            in_m  = mask & mov_col.isin(proc_in_movs)
+            out_m = mask & mov_col.isin(proc_out_movs)
+            emb_m = mask & (mov_col == 'EMBARQUE')
+
+            waste_mask = serie_up.isin(WASTE_SERIES) | serie_up.str.contains('DESCARTE', na=False)
+            carozo_mask   = serie_up == 'CAROZO'
+            contra_mask   = serie_up == 'CONTRAMUESTRA'
+            descarte_mask = serie_up.str.contains('DESCARTE', na=False)
+
+            neto_in   = df.loc[in_m,  'NETO'].dropna()
+            neto_good = df.loc[out_m & ~waste_mask, 'NETO'].dropna()
+            neto_car  = df.loc[out_m & carozo_mask,   'NETO'].dropna()
+            neto_des  = df.loc[out_m & descarte_mask,  'NETO'].dropna()
+            neto_con  = df.loc[out_m & contra_mask,    'NETO'].dropna()
+            neto_emb  = df.loc[emb_m, 'NETO'].dropna()
+
+            kg_entrada      = float(neto_in.sum())   if not neto_in.empty   else None
+            kg_salida_bueno = float(neto_good.sum()) if not neto_good.empty else None
+            kg_carozo       = float(neto_car.sum())  if not neto_car.empty  else None
+            kg_descarte     = float(neto_des.sum())  if not neto_des.empty  else None
+            kg_contramuestra = float(neto_con.sum()) if not neto_con.empty  else None
+            kg_embarcado    = float(neto_emb.sum())  if not neto_emb.empty  else None
+
+            rend = None
+            if kg_entrada and kg_entrada > 0 and kg_salida_bueno is not None:
+                rend = round(kg_salida_bueno / kg_entrada * 100, 1)
+
+            tp_vals = df.loc[mask, 'TIPOPROCESO'].dropna()
+            sc_vals = df.loc[mask, 'SECADO'].dropna().unique()
+            te_vals = df.loc[mask, 'TEMPORADA'].dropna()
+            pr_vals = df.loc[in_m,  'PRODUCTOR'].dropna()
+            io_vals = df.loc[mask, 'IDOT'].dropna()
+            fi_vals = df.loc[in_m,  'FECHA'].dropna()
+            fo_vals = df.loc[out_m, 'FECHA'].dropna()
+
+            tipoproceso = str(tp_vals.iloc[0]).strip() if not tp_vals.empty else None
+            secado = ', '.join(str(s).strip() for s in sc_vals if s) or None
+            temporada = str(int(te_vals.iloc[0])) if not te_vals.empty else None
+            productores = ', '.join(sorted({str(p).strip() for p in pr_vals if p})) or None
+            idot = int(io_vals.iloc[0]) if not io_vals.empty else None
+
+            fecha_inicio = fi_vals.min().to_pydatetime() if not fi_vals.empty else None
+            fecha_fin    = fo_vals.max().to_pydatetime() if not fo_vals.empty else None
+
+            if out_m.any() and emb_m.any():
+                estado = 'embarcado'
+            elif out_m.any():
+                estado = 'procesado'
+            else:
+                estado = 'en proceso'
+
+            proc_records.append({
+                'ot': ot, 'idot': idot, 'temporada': temporada,
+                'tipoproceso': tipoproceso, 'secado': secado,
+                'fecha_inicio': fecha_inicio, 'fecha_fin': fecha_fin,
+                'bins_entrada': int(in_m.sum()),
+                'kg_entrada': kg_entrada, 'kg_salida_bueno': kg_salida_bueno,
+                'kg_carozo': kg_carozo, 'kg_descarte': kg_descarte,
+                'kg_contramuestra': kg_contramuestra, 'kg_embarcado': kg_embarcado,
+                'rendimiento_pct': rend, 'productores': productores,
+                'estado': estado, 'imported_at': now,
+            })
+
+        if proc_records:
+            db.session.execute(_sa_insert(Proceso), proc_records)
+        db.session.commit()
+
+        # ── 3. Rebuild OrdenDeVenta summaries ─────────────────────────────
+        OrdenDeVenta.query.delete(synchronize_session=False)
+        db.session.commit()
+
+        emb_mask = mov_col == 'EMBARQUE'
+        emb_ots  = sorted(set(ot_col[emb_mask]))
+        proc_id_by_ot = {p.ot: p.id for p in Proceso.query.all()}
+        odv_records = []
+
+        for ot in emb_ots:
+            m = emb_mask & (ot_col == ot)
+            cl_vals = df.loc[m, 'CLIENTE'].dropna()
+            se_vals = df.loc[m, 'SERIE'].dropna().unique()
+            ne_vals = df.loc[m, 'NETO'].dropna()
+            fe_vals = df.loc[m, 'FECHA'].dropna()
+            tp_vals = df.loc[m, 'TIPOPROCESO'].dropna()
+            te_vals = df.loc[m, 'TEMPORADA'].dropna()
+            io_vals = df.loc[m, 'IDOT'].dropna()
+
+            odv_records.append({
+                'ot':     ot,
+                'idot':   int(io_vals.iloc[0]) if not io_vals.empty else None,
+                'temporada': str(int(te_vals.iloc[0])) if not te_vals.empty else None,
+                'tipoproceso': str(tp_vals.iloc[0]).strip() if not tp_vals.empty else None,
+                'cliente': str(cl_vals.iloc[0]).strip() if not cl_vals.empty else None,
+                'calibres': ', '.join(str(s).strip() for s in se_vals if s) or None,
+                'kg_embarcado': float(ne_vals.sum()) if not ne_vals.empty else None,
+                'fecha_primer_embarque': fe_vals.min().to_pydatetime() if not fe_vals.empty else None,
+                'fecha_ultimo_embarque': fe_vals.max().to_pydatetime() if not fe_vals.empty else None,
+                'proceso_id': proc_id_by_ot.get(ot),
+                'imported_at': now,
+            })
+
+        if odv_records:
+            db.session.execute(_sa_insert(OrdenDeVenta), odv_records)
+        db.session.commit()
+
+        flash(
+            f'Histórico importado: {n_rows} movimientos. '
+            f'{len(proc_records)} procesos y {len(odv_records)} órdenes de venta reconstruidos.',
+            'ok',
+        )
+        return redirect(url_for('list_procesos'))
 
     @app.route('/pallets')
     def list_pallets():
@@ -1952,6 +2161,33 @@ pre{{background:#1a1a2a;padding:12px;white-space:pre-wrap;word-break:break-all;f
     return app
 
 
+def _pre_migrate(db_obj):
+    """Drop tables whose schema changed — runs before db.create_all()."""
+    stmts = [
+        'DROP TABLE IF EXISTS proceso_lineas CASCADE',
+        # Drop old procesos table if it lacks the new bins_entrada column
+        """DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name='procesos' AND column_name='bins_entrada'
+          ) THEN
+            DROP TABLE IF EXISTS procesos CASCADE;
+          END IF;
+        END $$""",
+    ]
+    with db_obj.engine.connect() as conn:
+        for sql in stmts:
+            try:
+                conn.execute(db_obj.text(sql))
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+
+
 def _migrate(db_obj):
     """Additive schema migrations — safe to run on every startup."""
     stmts = [
@@ -1984,8 +2220,11 @@ def _migrate(db_obj):
         'ALTER TABLE excedentes ADD COLUMN IF NOT EXISTS source_bin_tarja VARCHAR(50)',
         # fruit quality tier on order lines
         'ALTER TABLE order_lines ADD COLUMN IF NOT EXISTS fruit_quality VARCHAR(20)',
-        # IDOT (external order ID) on Proceso records
-        'ALTER TABLE procesos ADD COLUMN IF NOT EXISTS idot VARCHAR(50)',
+        # warehouse location columns on historico_movimientos (added 2026-07)
+        'ALTER TABLE historico_movimientos ADD COLUMN IF NOT EXISTS x VARCHAR(10)',
+        'ALTER TABLE historico_movimientos ADD COLUMN IF NOT EXISTS y FLOAT',
+        'ALTER TABLE historico_movimientos ADD COLUMN IF NOT EXISTS z FLOAT',
+        'ALTER TABLE historico_movimientos ADD COLUMN IF NOT EXISTS direccion FLOAT',
     ]
     with db_obj.engine.connect() as conn:
         for sql in stmts:

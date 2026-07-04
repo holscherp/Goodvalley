@@ -22,7 +22,9 @@
     <a href="{{ url_for('list_orders') }}"
        class="{{ 'on' if request.endpoint and 'order' in request.endpoint else '' }}">Órdenes de Venta</a>
     <a href="{{ url_for('list_procesos') }}"
-       class="{{ 'on' if request.endpoint == 'list_procesos' else '' }}">Procesos</a>
+       class="{{ 'on' if request.endpoint in ('list_procesos','proceso_detail') else '' }}">Procesos</a>
+    <a href="{{ url_for('list_ordenes_de_venta') }}"
+       class="{{ 'on' if request.endpoint in ('list_ordenes_de_venta','orden_de_venta_detail') else '' }}">Embarques</a>
     <a href="{{ url_for('list_pallets') }}"
        class="{{ 'on' if request.endpoint == 'list_pallets' else '' }}">Pallets en Bodega</a>
     <a href="{{ url_for('rendimientos') }}"
@@ -40,6 +42,13 @@
           <label class="act-item act-upload" title="Subir bins.json manualmente">
             Subir JSON
             <input type="file" name="bins_file" accept=".json" style="display:none"
+                   onchange="this.form.submit()">
+          </label>
+        </form>
+        <form action="{{ url_for('import_historico') }}" method="post" enctype="multipart/form-data" style="margin:0">
+          <label class="act-item act-upload" title="Subir Histórico para Camilo (.xlsx)">
+            Subir Histórico
+            <input type="file" name="historico_file" accept=".xlsx" style="display:none"
                    onchange="this.form.submit()">
           </label>
         </form>

@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+{% block title %}Embarques · Goodvalley{% endblock %}
+
+{% block content %}
+<div class="row-between">
+  <div>
+    <h1>Embarques</h1>
+    <p class="muted">
+      Órdenes de embarque, basado en Histórico para Camilo.
+      {% if last_imported %}· importado {{ last_imported.strftime('%d-%m-%Y %H:%M') }}{% endif %}
+    </p>
+  </div>
+  <div class="cards" style="margin:0;gap:10px">
+    <div class="card" style="min-width:0;padding:12px 18px">
+      <div class="big">{{ ordenes|length }}</div>
+      <div class="lbl">órdenes</div>
+    </div>
+    {% set total_kg = ordenes | selectattr('kg_embarcado') | sum(attribute='kg_embarcado') %}
+    <div class="card" style="min-width:0;padding:12px 18px">
+      <div class="big">{{ "{:,.0f}".format(total_kg) }}</div>
+      <div class="lbl">kg embarcados</div>
+    </div>
+  </div>
+</div>
+
+{% if ordenes %}
+<div style="margin-bottom:10px">
+  <input id="odv-search" type="text" placeholder="Buscar OT, cliente, calibre…"
+         style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
+                background:var(--card);color:var(--fg);font-size:13px;width:280px"
+         oninput="filterOdv(this.value)">
+</div>
+<table class="grid tight" id="odv-table">
+  <thead><tr>
+    <th>OT</th>
+    <th>Cliente</th>
+    <th>Tipo Proceso</th>
+    <th>Temporada</th>
+    <th>Calibres</th>
+    <th class="num">Kg Embarcados</th>
+    <th>Primer Embarque</th>
+    <th>Último Embarque</th>
+    <th>Proceso</th>
+  </tr></thead>
+  <tbody>
+  {% for o in ordenes %}
+  <tr style="cursor:pointer" onclick="location.href='{{ url_for('orden_de_venta_detail', ot=o.ot) }}'">
+    <td class="mono" style="font-weight:600">
+      <a href="{{ url_for('orden_de_venta_detail', ot=o.ot) }}" style="color:var(--purple);text-decoration:none">
+        {{ o.ot }}
+      </a>
+    </td>
+    <td>{{ o.cliente or '—' }}</td>
+    <td>{{ o.tipoproceso or '—' }}</td>
+    <td>{{ o.temporada or '—' }}</td>
+    <td style="font-size:12px">{{ o.calibres or '—' }}</td>
+    <td class="num"><strong>{{ "{:,.1f}".format(o.kg_embarcado) if o.kg_embarcado else '—' }}</strong></td>
+    <td class="mono" style="font-size:12px">
+      {{ o.fecha_primer_embarque.strftime('%d-%m-%Y') if o.fecha_primer_embarque else '—' }}
+    </td>
+    <td class="mono" style="font-size:12px">
+      {{ o.fecha_ultimo_embarque.strftime('%d-%m-%Y') if o.fecha_ultimo_embarque else '—' }}
+    </td>
+    <td style="font-size:12px">
+      {% if o.proceso %}
+        <a href="{{ url_for('proceso_detail', ot=o.proceso.ot) }}" style="color:var(--purple)">
+          {{ o.proceso.ot }}
+        </a>
+      {% else %}—{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<script>
+function filterOdv(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('#odv-table tbody tr').forEach(function(tr) {
+    tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+</script>
+{% else %}
+<div class="empty">
+  <p>No hay embarques importados todavía.</p>
+  <p class="muted" style="margin-top:6px">
+    Presioná <strong>Actualizar → Subir Histórico</strong> para importar el archivo Excel.
+  </p>
+</div>
+{% endif %}
+{% endblock %}
