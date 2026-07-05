@@ -77,10 +77,10 @@
   <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:28px">
 
     {# Combined residuos card #}
-    {% if p.kg_carozo or p.kg_descarte or p.kg_contramuestra or p.kg_embarcado %}
+    {% if p.kg_carozo or p.kg_descarte or p.kg_contramuestra %}
     <div class="card" style="padding:18px 24px;flex:2;min-width:260px">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;margin-bottom:12px">
-        Residuos &amp; Embarque
+        Residuos
       </div>
       <div style="display:flex;gap:28px;flex-wrap:wrap">
         {% if p.kg_carozo %}
@@ -101,13 +101,17 @@
           <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px">Contramuestra</div>
         </div>
         {% endif %}
-        {% if p.kg_embarcado %}
-        <div style="border-left:1px solid var(--border);padding-left:28px">
-          <div style="font-size:1.1rem;font-weight:700">{{ "{:,.1f}".format(p.kg_embarcado) }} kg</div>
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px">Embarcado</div>
-        </div>
-        {% endif %}
       </div>
+    </div>
+    {% endif %}
+
+    {# Embarcado card #}
+    {% if p.kg_embarcado %}
+    <div class="card" style="padding:18px 24px;min-width:140px;text-align:center">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;margin-bottom:12px">
+        Embarcado
+      </div>
+      <div style="font-size:1.3rem;font-weight:700">{{ "{:,.1f}".format(p.kg_embarcado) }} kg</div>
     </div>
     {% endif %}
 
