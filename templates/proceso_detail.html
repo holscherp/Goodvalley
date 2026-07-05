@@ -1,119 +1,204 @@
 {% extends 'base.html' %}
-{% block title %}{{ proc.ot }} · Procesos · Goodvalley{% endblock %}
+{% block title %}OT {{ base_ot }} · Procesos · Goodvalley{% endblock %}
 
 {% block content %}
 <div style="margin-bottom:18px">
   <a href="{{ url_for('list_procesos') }}" style="color:var(--purple);font-size:13px">← Procesos</a>
 </div>
 
-<div class="row-between" style="align-items:flex-start;flex-wrap:wrap;gap:16px">
-  <div>
-    <h1 style="font-size:1.5rem;margin-bottom:4px">OT {{ proc.ot }}</h1>
-    <p class="muted" style="margin:0">
-      {% if proc.tipoproceso %}{{ proc.tipoproceso }}{% endif %}
-      {% if proc.secado %} · {{ proc.secado }}{% endif %}
-      {% if proc.temporada %} · Temporada {{ proc.temporada }}{% endif %}
-      {% if proc.productores %} · {{ proc.productores }}{% endif %}
-    </p>
-  </div>
-  <div class="cards" style="margin:0;gap:10px;flex-wrap:wrap">
-    <div class="card" style="min-width:0;padding:12px 18px;text-align:right">
-      <div class="big">{{ proc.bins_entrada or '—' }}</div>
-      <div class="lbl">bins entrada</div>
-    </div>
-    <div class="card" style="min-width:0;padding:12px 18px;text-align:right">
-      <div class="big">{{ "{:,.1f}".format(proc.kg_entrada) if proc.kg_entrada else '—' }}</div>
-      <div class="lbl">kg entrada</div>
-    </div>
-    <div class="card" style="min-width:0;padding:12px 18px;text-align:right">
-      <div class="big">{{ "{:,.1f}".format(proc.kg_salida_bueno) if proc.kg_salida_bueno else '—' }}</div>
-      <div class="lbl">kg salida (bueno)</div>
-    </div>
-    <div class="card" style="min-width:0;padding:12px 18px;text-align:right">
-      <div class="big">{{ proc.rendimiento_str }}</div>
-      <div class="lbl">rendimiento</div>
-    </div>
-  </div>
-</div>
+<h1 style="font-size:1.6rem;margin-bottom:6px">OT {{ base_ot }}</h1>
 
-<!-- Summary row -->
-<div class="cards" style="margin:20px 0 0;gap:10px;flex-wrap:wrap">
-  {% if proc.kg_carozo %}
-  <div class="card" style="min-width:0;padding:10px 16px;text-align:right">
-    <div style="font-size:1.1rem;font-weight:700">{{ "{:,.1f}".format(proc.kg_carozo) }} kg</div>
-    <div class="lbl">carozo</div>
-  </div>
-  {% endif %}
-  {% if proc.kg_descarte %}
-  <div class="card" style="min-width:0;padding:10px 16px;text-align:right">
-    <div style="font-size:1.1rem;font-weight:700">{{ "{:,.1f}".format(proc.kg_descarte) }} kg</div>
-    <div class="lbl">descarte</div>
-  </div>
-  {% endif %}
-  {% if proc.kg_contramuestra %}
-  <div class="card" style="min-width:0;padding:10px 16px;text-align:right">
-    <div style="font-size:1.1rem;font-weight:700">{{ "{:,.1f}".format(proc.kg_contramuestra) }} kg</div>
-    <div class="lbl">contramuestra</div>
-  </div>
-  {% endif %}
-  {% if proc.kg_embarcado %}
-  <div class="card" style="min-width:0;padding:10px 16px;text-align:right">
-    <div style="font-size:1.1rem;font-weight:700">{{ "{:,.1f}".format(proc.kg_embarcado) }} kg</div>
-    <div class="lbl">embarcado</div>
-  </div>
-  {% endif %}
-  <div class="card" style="min-width:0;padding:10px 16px;text-align:right">
-    <div style="font-size:1rem;font-weight:700">{{ proc.fecha_inicio_str }}</div>
-    <div class="lbl">inicio</div>
-  </div>
-  <div class="card" style="min-width:0;padding:10px 16px;text-align:right">
-    <div style="font-size:1rem;font-weight:700">{{ proc.fecha_fin_str }}</div>
-    <div class="lbl">fin</div>
-  </div>
-</div>
-
-<!-- Movements table -->
-{% set mov_types = movimientos | map(attribute='movimiento') | unique | list %}
-
-{% if movimientos %}
-<h2 style="margin:28px 0 10px;font-size:1rem">Todos los movimientos ({{ movimientos|length }})</h2>
-<table class="grid tight">
-  <thead><tr>
-    <th>Fecha</th>
-    <th>Movimiento</th>
-    <th>Tarja</th>
-    <th>Calibre / Serie</th>
-    <th>Producto</th>
-    <th>Productor</th>
-    <th class="num">Neto (kg)</th>
-    <th>Bodega</th>
-  </tr></thead>
-  <tbody>
-  {% for m in movimientos %}
-  <tr>
-    <td class="mono" style="font-size:12px">{{ m.fecha_str or '—' }}</td>
-    <td>
-      <span style="font-size:11px;font-weight:600;
-        color:{% if 'EGRESO A PROCESO' in (m.movimiento or '') %}#e67e22
-              {% elif 'INGRESO DESDE PROCESO' in (m.movimiento or '') %}#27ae60
-              {% elif 'EMBARQUE' in (m.movimiento or '') %}#8e44ad
-              {% else %}var(--fg){% endif %}">
-        {{ m.movimiento or '—' }}
-      </span>
-    </td>
-    <td class="mono" style="font-size:12px">{{ m.tarja or '—' }}</td>
-    <td class="mono">{{ m.serie or '—' }}</td>
-    <td style="font-size:12px">{{ m.producto or '—' }}</td>
-    <td style="font-size:12px">{{ m.productor or '—' }}</td>
-    <td class="num"><strong>{{ "{:,.1f}".format(m.neto) if m.neto else '—' }}</strong></td>
-    <td style="font-size:12px">{{ m.bodega or '—' }}</td>
-  </tr>
+{# ── Sub-OT tab selector (only shown when there are multiple lines) ── #}
+{% if sub_procs|length > 1 %}
+<div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">
+  {% for p in sub_procs %}
+  <button class="sub-tab {% if loop.first %}active{% endif %}"
+          onclick="switchTab('{{ p.ot }}')"
+          id="tab-{{ p.ot }}"
+          style="padding:6px 16px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;
+                 border:2px solid var(--purple);transition:.15s;
+                 background:{% if loop.first %}var(--purple){% else %}transparent{% endif %};
+                 color:{% if loop.first %}#fff{% else %}var(--purple){% endif %}">
+    {{ p.ot }}
+  </button>
   {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<div class="empty" style="margin-top:24px">
-  <p>No hay movimientos registrados para esta OT.</p>
 </div>
+{% endif %}
+
+{# ── One section per sub-OT ── #}
+{% for p in sub_procs %}
+<div class="sub-panel" id="panel-{{ p.ot }}"
+     style="display:{% if loop.first %}block{% else %}none{% endif %}">
+
+  {# Header subtitle #}
+  <p class="muted" style="margin:0 0 20px">
+    {% if p.tipoproceso %}{{ p.tipoproceso }}{% endif %}
+    {% if p.secado %} · {{ p.secado }}{% endif %}
+    {% if p.temporada %} · Temporada {{ p.temporada }}{% endif %}
+    {% if p.productores %} · {{ p.productores }}{% endif %}
+  </p>
+
+  {# ── Main stat cards (big 4) ── #}
+  <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px">
+
+    <div class="card" style="padding:22px 30px;min-width:150px;text-align:center;flex:1">
+      <div style="font-size:2.2rem;font-weight:700;color:var(--purple)">{{ p.bins_entrada or '—' }}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.07em;font-weight:600">Bins Entrada</div>
+    </div>
+
+    <div class="card" style="padding:22px 30px;min-width:150px;text-align:center;flex:1">
+      <div style="font-size:2.2rem;font-weight:700;color:var(--purple)">
+        {{ "{:,.1f}".format(p.kg_entrada) if p.kg_entrada else '—' }}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.07em;font-weight:600">KG Entrada</div>
+    </div>
+
+    <div class="card" style="padding:22px 30px;min-width:150px;text-align:center;flex:1">
+      <div style="font-size:2.2rem;font-weight:700;color:var(--purple)">
+        {{ "{:,.1f}".format(p.kg_salida_bueno) if p.kg_salida_bueno else '—' }}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.07em;font-weight:600">KG Salida (Bueno)</div>
+    </div>
+
+    <div class="card" style="padding:22px 30px;min-width:150px;text-align:center;flex:1">
+      {% if p.rendimiento_pct is not none %}
+        <div style="font-size:2.2rem;font-weight:700;
+          color:{% if p.rendimiento_pct > 100 %}#e67e22{% elif p.rendimiento_pct < 70 %}#e74c3c{% else %}var(--purple){% endif %}">
+          {{ "%.1f"|format(p.rendimiento_pct) }}%
+        </div>
+      {% else %}
+        <div style="font-size:2.2rem;font-weight:700;color:var(--purple)">—</div>
+      {% endif %}
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.07em;font-weight:600">Rendimiento</div>
+    </div>
+  </div>
+
+  {# ── Secondary cards (residuos + período) ── #}
+  <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:28px">
+
+    {# Combined residuos card #}
+    {% if p.kg_carozo or p.kg_descarte or p.kg_contramuestra or p.kg_embarcado %}
+    <div class="card" style="padding:18px 24px;flex:2;min-width:260px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;margin-bottom:12px">
+        Residuos &amp; Embarque
+      </div>
+      <div style="display:flex;gap:28px;flex-wrap:wrap">
+        {% if p.kg_carozo %}
+        <div>
+          <div style="font-size:1.1rem;font-weight:700">{{ "{:,.1f}".format(p.kg_carozo) }} kg</div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px">Carozo</div>
+        </div>
+        {% endif %}
+        {% if p.kg_descarte %}
+        <div>
+          <div style="font-size:1.1rem;font-weight:700">{{ "{:,.1f}".format(p.kg_descarte) }} kg</div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px">Descarte</div>
+        </div>
+        {% endif %}
+        {% if p.kg_contramuestra %}
+        <div>
+          <div style="font-size:1.1rem;font-weight:700">{{ "{:,.1f}".format(p.kg_contramuestra) }} kg</div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px">Contramuestra</div>
+        </div>
+        {% endif %}
+        {% if p.kg_embarcado %}
+        <div style="border-left:1px solid var(--border);padding-left:28px">
+          <div style="font-size:1.1rem;font-weight:700">{{ "{:,.1f}".format(p.kg_embarcado) }} kg</div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px">Embarcado</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# Combined período card #}
+    <div class="card" style="padding:18px 24px;flex:1;min-width:220px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;margin-bottom:12px">
+        Período
+      </div>
+      <div style="display:flex;gap:16px;align-items:center">
+        <div>
+          <div style="font-size:1rem;font-weight:700">{{ p.fecha_inicio_str }}</div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px">Inicio</div>
+        </div>
+        <div style="color:var(--muted);font-size:1.2rem">→</div>
+        <div>
+          <div style="font-size:1rem;font-weight:700">{{ p.fecha_fin_str }}</div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px">Fin</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Movements table ── #}
+  {% set movimientos = movimientos_by_ot[p.ot] %}
+  {% if movimientos %}
+  <h2 style="font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px">
+    Todos los movimientos ({{ movimientos|length }})
+  </h2>
+  <table class="grid tight">
+    <thead><tr>
+      <th>Fecha</th>
+      <th>Movimiento</th>
+      <th>Tarja</th>
+      <th>Calibre / Serie</th>
+      <th>Producto</th>
+      <th>Productor</th>
+      <th class="num">Neto (kg)</th>
+      <th>Bodega</th>
+    </tr></thead>
+    <tbody>
+    {% for m in movimientos %}
+    <tr>
+      <td class="mono" style="font-size:12px">{{ m.fecha_str or '—' }}</td>
+      <td>
+        {% set mov = m.movimiento or '' %}
+        <span style="font-size:11px;font-weight:700;
+          color:{% if 'EGRESO A PROCESO' in mov %}#c05621
+                {% elif 'INGRESO DESDE PROCESO' in mov %}#2d6a4f
+                {% elif 'EMBARQUE' in mov %}#5b21b6
+                {% else %}var(--muted){% endif %}">
+          {{ mov }}
+        </span>
+      </td>
+      <td class="mono" style="font-size:12px">{{ m.tarja or '—' }}</td>
+      <td class="mono" style="font-weight:{% if m.movimiento and 'INGRESO' in m.movimiento and not m.is_waste %}600{% else %}400{% endif %}">
+        {{ m.serie or '—' }}
+      </td>
+      <td style="font-size:12px">{{ m.producto or '—' }}</td>
+      <td style="font-size:12px">{{ m.productor or '—' }}</td>
+      <td class="num" style="font-weight:{% if m.movimiento and 'INGRESO' in m.movimiento and not m.is_waste %}700{% else %}400{% endif %}">
+        {{ "{:,.1f}".format(m.neto) if m.neto else '—' }}
+      </td>
+      <td style="font-size:12px">{{ m.bodega or '—' }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty" style="margin-top:24px">
+    <p>No hay movimientos registrados para esta OT.</p>
+  </div>
+  {% endif %}
+
+</div>{# end sub-panel #}
+{% endfor %}
+
+{% if sub_procs|length > 1 %}
+<script>
+function switchTab(ot) {
+  document.querySelectorAll('.sub-panel').forEach(function(el) {
+    el.style.display = 'none';
+  });
+  document.querySelectorAll('.sub-tab').forEach(function(btn) {
+    btn.style.background = 'transparent';
+    btn.style.color = 'var(--purple)';
+  });
+  document.getElementById('panel-' + ot).style.display = 'block';
+  var tab = document.getElementById('tab-' + ot);
+  tab.style.background = 'var(--purple)';
+  tab.style.color = '#fff';
+}
+</script>
 {% endif %}
 {% endblock %}

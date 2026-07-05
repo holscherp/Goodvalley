@@ -1713,21 +1713,90 @@ def create_app():
     @app.route('/procesos')
     def list_procesos():
         from models import Proceso
+        from collections import OrderedDict
         procesos = Proceso.query.order_by(Proceso.ot).all()
         last_imported = procesos[0].imported_at if procesos else None
-        return render_template('procesos.html', procesos=procesos, last_imported=last_imported)
+
+        # Group sub-OTs (e.g. 785-0001-1 + 785-0001-2) under their base OT
+        groups = OrderedDict()
+        for p in procesos:
+            groups.setdefault(_ot_base(p.ot), []).append(p)
+
+        display_rows = []
+        for base_ot, procs in groups.items():
+            kg_in  = sum(p.kg_entrada or 0 for p in procs) or None
+            kg_out = sum(p.kg_salida_bueno or 0 for p in procs) or None
+            rend   = round(kg_out / kg_in * 100, 1) if kg_in else None
+            bins   = sum(p.bins_entrada or 0 for p in procs) or None
+            estados = {p.estado for p in procs}
+            estado = ('embarcado' if 'embarcado' in estados
+                      else 'procesado' if 'procesado' in estados
+                      else 'en proceso')
+            all_prods = set()
+            for p in procs:
+                for prod in (p.productores or '').split(', '):
+                    if prod.strip():
+                        all_prods.add(prod.strip())
+            all_inicio = [p.fecha_inicio for p in procs if p.fecha_inicio]
+            all_fin    = [p.fecha_fin    for p in procs if p.fecha_fin]
+            secados = {s.strip() for p in procs for s in (p.secado or '').split(',') if s.strip()}
+            display_rows.append({
+                'base_ot':      base_ot,
+                'procs':        procs,
+                'n_lineas':     len(procs),
+                'bins_entrada': bins,
+                'kg_entrada':   kg_in,
+                'kg_salida_bueno': kg_out,
+                'rendimiento_pct': rend,
+                'estado':       estado,
+                'productores':  ', '.join(sorted(all_prods)),
+                'fecha_inicio': min(all_inicio) if all_inicio else None,
+                'fecha_fin':    max(all_fin)    if all_fin    else None,
+                'tipoproceso':  procs[0].tipoproceso,
+                'secado':       ', '.join(sorted(secados)),
+                'temporada':    procs[0].temporada,
+            })
+
+        return render_template('procesos.html', display_rows=display_rows, last_imported=last_imported)
 
     @app.route('/procesos/<path:ot>')
     def proceso_detail(ot):
-        from models import Proceso, HistoricoMovimiento
-        proc = Proceso.query.filter_by(ot=ot).first_or_404()
-        movimientos = (
-            HistoricoMovimiento.query
-            .filter_by(ot=ot)
-            .order_by(HistoricoMovimiento.fecha)
-            .all()
-        )
-        return render_template('proceso_detail.html', proc=proc, movimientos=movimientos)
+        from models import Proceso, HistoricoMovimiento, WASTE_SERIES
+        from flask import redirect, abort
+
+        base = _ot_base(ot)
+        # If someone navigates to a sub-OT directly, redirect to its base
+        if base != ot:
+            return redirect(url_for('proceso_detail', ot=base))
+
+        all_procs = Proceso.query.order_by(Proceso.ot).all()
+        sub_procs = [p for p in all_procs if _ot_base(p.ot) == base]
+        if not sub_procs:
+            abort(404)
+
+        def _mov_sort_key(m):
+            mov   = (m.movimiento or '').upper().strip()
+            serie = (m.serie or '').upper().strip()
+            is_waste = serie in WASTE_SERIES or 'DESCARTE' in serie
+            if mov == 'EGRESO A PROCESO':
+                return (0, 0, serie)
+            if mov == 'INGRESO DESDE PROCESO':
+                return (1, 1 if is_waste else 0, serie)
+            return (2, 0, mov)
+
+        movimientos_by_ot = {}
+        for p in sub_procs:
+            movs = (
+                HistoricoMovimiento.query
+                .filter_by(ot=p.ot)
+                .all()
+            )
+            movimientos_by_ot[p.ot] = sorted(movs, key=_mov_sort_key)
+
+        return render_template('proceso_detail.html',
+                               base_ot=base,
+                               sub_procs=sub_procs,
+                               movimientos_by_ot=movimientos_by_ot)
 
     # ── Órdenes de Venta (from Histórico) ────────────────────────────────────
 

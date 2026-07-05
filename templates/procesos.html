@@ -12,19 +12,19 @@
   </div>
   <div class="cards" style="margin:0;gap:10px">
     <div class="card" style="min-width:0;padding:12px 18px">
-      <div class="big">{{ procesos|length }}</div>
-      <div class="lbl">OTs de proceso</div>
+      <div class="big">{{ display_rows|length }}</div>
+      <div class="lbl">órdenes de trabajo</div>
     </div>
-    {% set total_kg_in = procesos | selectattr('kg_entrada') | sum(attribute='kg_entrada') %}
-    {% set total_kg_out = procesos | selectattr('kg_salida_bueno') | sum(attribute='kg_salida_bueno') %}
+    {% set total_kg_in = namespace(v=0) %}
+    {% for r in display_rows %}{% if r.kg_entrada %}{% set total_kg_in.v = total_kg_in.v + r.kg_entrada %}{% endif %}{% endfor %}
     <div class="card" style="min-width:0;padding:12px 18px">
-      <div class="big">{{ "{:,.0f}".format(total_kg_in) }}</div>
+      <div class="big">{{ "{:,.0f}".format(total_kg_in.v) }}</div>
       <div class="lbl">kg entrada total</div>
     </div>
   </div>
 </div>
 
-{% if procesos %}
+{% if display_rows %}
 <div style="margin-bottom:10px">
   <input id="proc-search" type="text" placeholder="Buscar OT, tipo, productor…"
          style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
@@ -34,9 +34,9 @@
 <table class="grid tight" id="proc-table">
   <thead><tr>
     <th>OT</th>
-    <th>Tipo Proceso</th>
+    <th>Tipo</th>
     <th>Secado</th>
-    <th>Temporada</th>
+    <th>Temp.</th>
     <th class="num">Bins</th>
     <th class="num">Kg Entrada</th>
     <th class="num">Kg Salida</th>
@@ -47,33 +47,44 @@
     <th>Fin</th>
   </tr></thead>
   <tbody>
-  {% for p in procesos %}
-  <tr style="cursor:pointer" onclick="location.href='{{ url_for('proceso_detail', ot=p.ot) }}'">
+  {% for r in display_rows %}
+  <tr style="cursor:pointer" onclick="location.href='{{ url_for('proceso_detail', ot=r.base_ot) }}'">
     <td class="mono" style="font-weight:600">
-      <a href="{{ url_for('proceso_detail', ot=p.ot) }}" style="color:var(--purple);text-decoration:none">
-        {{ p.ot }}
+      <a href="{{ url_for('proceso_detail', ot=r.base_ot) }}" style="color:var(--purple);text-decoration:none">
+        {{ r.base_ot }}
       </a>
+      {% if r.n_lineas > 1 %}
+        <span style="font-size:10px;background:var(--lavender);color:var(--purple);
+                     border-radius:10px;padding:1px 6px;margin-left:4px;font-weight:700">
+          {{ r.n_lineas }} líneas
+        </span>
+      {% endif %}
     </td>
-    <td>{{ p.tipoproceso or '—' }}</td>
-    <td>{{ p.secado or '—' }}</td>
-    <td>{{ p.temporada or '—' }}</td>
-    <td class="num">{{ p.bins_entrada or '—' }}</td>
-    <td class="num">{{ "{:,.1f}".format(p.kg_entrada) if p.kg_entrada else '—' }}</td>
-    <td class="num">{{ "{:,.1f}".format(p.kg_salida_bueno) if p.kg_salida_bueno else '—' }}</td>
+    <td>{{ r.tipoproceso or '—' }}</td>
+    <td>{{ r.secado or '—' }}</td>
+    <td>{{ r.temporada or '—' }}</td>
+    <td class="num">{{ r.bins_entrada or '—' }}</td>
+    <td class="num">{{ "{:,.1f}".format(r.kg_entrada) if r.kg_entrada else '—' }}</td>
+    <td class="num">{{ "{:,.1f}".format(r.kg_salida_bueno) if r.kg_salida_bueno else '—' }}</td>
     <td class="num">
-      {% if p.rendimiento_pct is not none %}
-        <span style="color:{% if p.rendimiento_pct > 100 %}#e67e22{% elif p.rendimiento_pct < 70 %}#e74c3c{% else %}var(--fg){% endif %}">
-          {{ "%.1f"|format(p.rendimiento_pct) }}%
+      {% if r.rendimiento_pct is not none %}
+        <span style="font-weight:600;color:{% if r.rendimiento_pct > 100 %}#e67e22{% elif r.rendimiento_pct < 70 %}#e74c3c{% else %}var(--fg){% endif %}">
+          {{ "%.1f"|format(r.rendimiento_pct) }}%
         </span>
       {% else %}—{% endif %}
     </td>
     <td>
-      <span class="pill pill-{{ p.estado|replace(' ','_') }}">{{ p.estado or '—' }}</span>
+      <span class="pill" style="background:{% if r.estado == 'embarcado' %}#ede9fe{% elif r.estado == 'procesado' %}#d1fae5{% else %}#fef3c7{% endif %};
+            color:{% if r.estado == 'embarcado' %}#5b21b6{% elif r.estado == 'procesado' %}#065f46{% else %}#92400e{% endif %}">
+        {{ r.estado }}
+      </span>
     </td>
     <td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-      {{ p.productores or '—' }}</td>
-    <td class="mono" style="font-size:12px">{{ p.fecha_inicio_str }}</td>
-    <td class="mono" style="font-size:12px">{{ p.fecha_fin_str }}</td>
+      {{ r.productores or '—' }}</td>
+    <td class="mono" style="font-size:12px">
+      {{ r.fecha_inicio.strftime('%Y-%m-%d') if r.fecha_inicio else '—' }}</td>
+    <td class="mono" style="font-size:12px">
+      {{ r.fecha_fin.strftime('%Y-%m-%d') if r.fecha_fin else '—' }}</td>
   </tr>
   {% endfor %}
   </tbody>
