@@ -78,27 +78,27 @@
 
     {# Combined residuos card #}
     {% if p.kg_carozo or p.kg_descarte or p.kg_contramuestra %}
-    <div class="card" style="padding:18px 24px;flex:2;min-width:260px">
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;margin-bottom:12px">
+    <div class="card" style="padding:12px 18px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;margin-bottom:8px">
         Residuos
       </div>
-      <div style="display:flex;gap:28px;flex-wrap:wrap">
+      <div style="display:flex;gap:20px;flex-wrap:wrap">
         {% if p.kg_carozo %}
         <div>
-          <div style="font-size:1.1rem;font-weight:700">{{ "{:,.1f}".format(p.kg_carozo) }} kg</div>
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px">Carozo</div>
+          <div style="font-size:.95rem;font-weight:700">{{ "{:,.1f}".format(p.kg_carozo) }} kg</div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:1px">Carozo</div>
         </div>
         {% endif %}
         {% if p.kg_descarte %}
         <div>
-          <div style="font-size:1.1rem;font-weight:700">{{ "{:,.1f}".format(p.kg_descarte) }} kg</div>
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px">Descarte</div>
+          <div style="font-size:.95rem;font-weight:700">{{ "{:,.1f}".format(p.kg_descarte) }} kg</div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:1px">Descarte</div>
         </div>
         {% endif %}
         {% if p.kg_contramuestra %}
         <div>
-          <div style="font-size:1.1rem;font-weight:700">{{ "{:,.1f}".format(p.kg_contramuestra) }} kg</div>
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px">Contramuestra</div>
+          <div style="font-size:.95rem;font-weight:700">{{ "{:,.1f}".format(p.kg_contramuestra) }} kg</div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:1px">Contramuestra</div>
         </div>
         {% endif %}
       </div>
@@ -107,28 +107,28 @@
 
     {# Embarcado card #}
     {% if p.kg_embarcado %}
-    <div class="card" style="padding:18px 24px;min-width:140px;text-align:center">
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;margin-bottom:12px">
+    <div class="card" style="padding:12px 18px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;margin-bottom:8px">
         Embarcado
       </div>
-      <div style="font-size:1.3rem;font-weight:700">{{ "{:,.1f}".format(p.kg_embarcado) }} kg</div>
+      <div style="font-size:.95rem;font-weight:700">{{ "{:,.1f}".format(p.kg_embarcado) }} kg</div>
     </div>
     {% endif %}
 
     {# Combined período card #}
-    <div class="card" style="padding:18px 24px;flex:1;min-width:220px">
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;margin-bottom:12px">
+    <div class="card" style="padding:12px 18px;white-space:nowrap">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;margin-bottom:8px">
         Período
       </div>
-      <div style="display:flex;gap:16px;align-items:center">
+      <div style="display:flex;gap:10px;align-items:center">
         <div>
-          <div style="font-size:1rem;font-weight:700">{{ p.fecha_inicio_str }}</div>
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px">Inicio</div>
+          <div style="font-size:.95rem;font-weight:700">{{ p.fecha_inicio_str }}</div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:1px">Inicio</div>
         </div>
-        <div style="color:var(--muted);font-size:1.2rem">→</div>
+        <div style="color:var(--muted)">→</div>
         <div>
-          <div style="font-size:1rem;font-weight:700">{{ p.fecha_fin_str }}</div>
-          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px">Fin</div>
+          <div style="font-size:.95rem;font-weight:700">{{ p.fecha_fin_str }}</div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:1px">Fin</div>
         </div>
       </div>
     </div>
