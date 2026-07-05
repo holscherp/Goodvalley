@@ -35,33 +35,35 @@
   <thead><tr>
     <th>OT</th>
     <th>Tipo</th>
-    <th>Secado</th>
     <th>Temp.</th>
     <th class="num">Bins</th>
     <th class="num">Kg Entrada</th>
     <th class="num">Kg Salida</th>
     <th class="num">Rend.</th>
     <th>Estado</th>
-    <th>Productores</th>
     <th>Inicio</th>
     <th>Fin</th>
   </tr></thead>
   <tbody>
   {% for r in display_rows %}
   <tr style="cursor:pointer" onclick="location.href='{{ url_for('proceso_detail', ot=r.base_ot) }}'">
-    <td class="mono" style="font-weight:600">
-      <a href="{{ url_for('proceso_detail', ot=r.base_ot) }}" style="color:var(--purple);text-decoration:none">
+    <td class="mono" style="font-weight:600;line-height:1.6">
+      <a href="{{ url_for('proceso_detail', ot=r.base_ot) }}" style="color:var(--purple);text-decoration:none;display:block">
         {{ r.base_ot }}
       </a>
       {% if r.n_lineas > 1 %}
         <span style="font-size:10px;background:var(--lavender);color:var(--purple);
-                     border-radius:10px;padding:1px 6px;margin-left:4px;font-weight:700">
+                     border-radius:10px;padding:1px 6px;font-weight:700;display:inline-block">
           {{ r.n_lineas }} líneas
         </span>
       {% endif %}
     </td>
-    <td>{{ r.tipoproceso or '—' }}</td>
-    <td>{{ r.secado or '—' }}</td>
+    <td>
+      {% if r.tipoproceso %}
+        {% if 'natural' in r.tipoproceso.lower() or 'condicion' in r.tipoproceso.lower() %}CN
+        {% else %}{{ r.tipoproceso }}{% endif %}
+      {% else %}—{% endif %}
+    </td>
     <td>{{ r.temporada or '—' }}</td>
     <td class="num">{{ r.bins_entrada or '—' }}</td>
     <td class="num">{{ "{:,.1f}".format(r.kg_entrada) if r.kg_entrada else '—' }}</td>
@@ -79,8 +81,6 @@
         {{ r.estado }}
       </span>
     </td>
-    <td style="font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-      {{ r.productores or '—' }}</td>
     <td class="mono" style="font-size:12px">
       {{ r.fecha_inicio.strftime('%Y-%m-%d') if r.fecha_inicio else '—' }}</td>
     <td class="mono" style="font-size:12px">
