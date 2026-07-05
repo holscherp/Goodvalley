@@ -1798,26 +1798,70 @@ def create_app():
                                sub_procs=sub_procs,
                                movimientos_by_ot=movimientos_by_ot)
 
-    # ── Órdenes de Venta (from Histórico) ────────────────────────────────────
+    # ── Órdenes de Venta / Embarques (from Histórico) ────────────────────────
 
     @app.route('/ordenes-de-venta')
     def list_ordenes_de_venta():
         from models import OrdenDeVenta
+        from collections import OrderedDict
         ordenes = OrdenDeVenta.query.order_by(OrdenDeVenta.fecha_primer_embarque.desc().nullslast()).all()
         last_imported = ordenes[0].imported_at if ordenes else None
-        return render_template('ordenes_de_venta.html', ordenes=ordenes, last_imported=last_imported)
+
+        # Group sub-OTs under their base OT
+        groups = OrderedDict()
+        for o in ordenes:
+            groups.setdefault(_ot_base(o.ot), []).append(o)
+
+        display_rows = []
+        for base_ot, ords in groups.items():
+            kg = sum(o.kg_embarcado or 0 for o in ords) or None
+            fechas_p = [o.fecha_primer_embarque for o in ords if o.fecha_primer_embarque]
+            fechas_u = [o.fecha_ultimo_embarque for o in ords if o.fecha_ultimo_embarque]
+            proceso = next((o.proceso for o in ords if o.proceso), None)
+            display_rows.append({
+                'base_ot':               base_ot,
+                'ords':                  ords,
+                'n_lineas':              len(ords),
+                'cliente':               ords[0].cliente,
+                'kg_embarcado':          kg,
+                'fecha_primer_embarque': min(fechas_p) if fechas_p else None,
+                'fecha_ultimo_embarque': max(fechas_u) if fechas_u else None,
+                'proceso':               proceso,
+            })
+
+        return render_template('ordenes_de_venta.html',
+                               display_rows=display_rows,
+                               last_imported=last_imported,
+                               total_ordenes=len(display_rows),
+                               total_kg=sum(r['kg_embarcado'] or 0 for r in display_rows))
 
     @app.route('/ordenes-de-venta/<path:ot>')
     def orden_de_venta_detail(ot):
         from models import OrdenDeVenta, HistoricoMovimiento
-        orden = OrdenDeVenta.query.filter_by(ot=ot).first_or_404()
-        embarques = (
-            HistoricoMovimiento.query
-            .filter_by(ot=ot, movimiento='EMBARQUE')
-            .order_by(HistoricoMovimiento.fecha)
-            .all()
-        )
-        return render_template('orden_de_venta_detail.html', orden=orden, embarques=embarques)
+        from flask import redirect, abort
+
+        base = _ot_base(ot)
+        if base != ot:
+            return redirect(url_for('orden_de_venta_detail', ot=base))
+
+        all_ords = OrdenDeVenta.query.order_by(OrdenDeVenta.ot).all()
+        sub_ords = [o for o in all_ords if _ot_base(o.ot) == base]
+        if not sub_ords:
+            abort(404)
+
+        embarques_by_ot = {}
+        for o in sub_ords:
+            embarques_by_ot[o.ot] = (
+                HistoricoMovimiento.query
+                .filter_by(ot=o.ot, movimiento='EMBARQUE')
+                .order_by(HistoricoMovimiento.fecha)
+                .all()
+            )
+
+        return render_template('orden_de_venta_detail.html',
+                               base_ot=base,
+                               sub_ords=sub_ords,
+                               embarques_by_ot=embarques_by_ot)
 
     # ── Import Histórico ──────────────────────────────────────────────────────
 

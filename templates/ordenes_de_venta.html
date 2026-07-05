@@ -11,21 +11,20 @@
     </p>
   </div>
   <div class="cards" style="margin:0;gap:10px">
-    <div class="card" style="min-width:0;padding:12px 18px">
-      <div class="big">{{ ordenes|length }}</div>
-      <div class="lbl">órdenes</div>
+    <div class="card" style="padding:12px 18px">
+      <div class="big">{{ total_ordenes }}</div>
+      <div class="lbl" style="text-transform:uppercase;letter-spacing:.05em;font-size:11px">Órdenes</div>
     </div>
-    {% set total_kg = ordenes | selectattr('kg_embarcado') | sum(attribute='kg_embarcado') %}
-    <div class="card" style="min-width:0;padding:12px 18px">
-      <div class="big">{{ "{:,.0f}".format(total_kg) }}</div>
-      <div class="lbl">kg embarcados</div>
+    <div class="card" style="padding:12px 22px">
+      <div class="big" style="font-size:1.5rem">{{ "{:,.0f}".format(total_kg) }}</div>
+      <div class="lbl" style="text-transform:uppercase;letter-spacing:.05em;font-size:11px">KG Embarcados</div>
     </div>
   </div>
 </div>
 
-{% if ordenes %}
+{% if display_rows %}
 <div style="margin-bottom:10px">
-  <input id="odv-search" type="text" placeholder="Buscar OT, cliente, calibre…"
+  <input id="odv-search" type="text" placeholder="Buscar OT, cliente…"
          style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
                 background:var(--card);color:var(--fg);font-size:13px;width:280px"
          oninput="filterOdv(this.value)">
@@ -34,37 +33,37 @@
   <thead><tr>
     <th>OT</th>
     <th>Cliente</th>
-    <th>Tipo Proceso</th>
-    <th>Temporada</th>
-    <th>Calibres</th>
-    <th class="num">Kg Embarcados</th>
+    <th class="num">KG Embarcados</th>
     <th>Primer Embarque</th>
     <th>Último Embarque</th>
     <th>Proceso</th>
   </tr></thead>
   <tbody>
-  {% for o in ordenes %}
-  <tr style="cursor:pointer" onclick="location.href='{{ url_for('orden_de_venta_detail', ot=o.ot) }}'">
-    <td class="mono" style="font-weight:600">
-      <a href="{{ url_for('orden_de_venta_detail', ot=o.ot) }}" style="color:var(--purple);text-decoration:none">
-        {{ o.ot }}
+  {% for r in display_rows %}
+  <tr style="cursor:pointer" onclick="location.href='{{ url_for('orden_de_venta_detail', ot=r.base_ot) }}'">
+    <td class="mono" style="font-weight:600;line-height:1.6">
+      <a href="{{ url_for('orden_de_venta_detail', ot=r.base_ot) }}" style="color:var(--purple);text-decoration:none;display:block">
+        {{ r.base_ot }}
       </a>
+      {% if r.n_lineas > 1 %}
+        <span style="font-size:10px;background:var(--lavender);color:var(--purple);
+                     border-radius:10px;padding:1px 6px;font-weight:700;display:inline-block">
+          {{ r.n_lineas }} líneas
+        </span>
+      {% endif %}
     </td>
-    <td>{{ o.cliente or '—' }}</td>
-    <td>{{ o.tipoproceso or '—' }}</td>
-    <td>{{ o.temporada or '—' }}</td>
-    <td style="font-size:12px">{{ o.calibres or '—' }}</td>
-    <td class="num"><strong>{{ "{:,.1f}".format(o.kg_embarcado) if o.kg_embarcado else '—' }}</strong></td>
+    <td>{{ r.cliente or '—' }}</td>
+    <td class="num"><strong>{{ "{:,.1f}".format(r.kg_embarcado) if r.kg_embarcado else '—' }}</strong></td>
     <td class="mono" style="font-size:12px">
-      {{ o.fecha_primer_embarque.strftime('%d-%m-%Y') if o.fecha_primer_embarque else '—' }}
+      {{ r.fecha_primer_embarque.strftime('%d-%m-%Y') if r.fecha_primer_embarque else '—' }}
     </td>
     <td class="mono" style="font-size:12px">
-      {{ o.fecha_ultimo_embarque.strftime('%d-%m-%Y') if o.fecha_ultimo_embarque else '—' }}
+      {{ r.fecha_ultimo_embarque.strftime('%d-%m-%Y') if r.fecha_ultimo_embarque else '—' }}
     </td>
     <td style="font-size:12px">
-      {% if o.proceso %}
-        <a href="{{ url_for('proceso_detail', ot=o.proceso.ot) }}" style="color:var(--purple)">
-          {{ o.proceso.ot }}
+      {% if r.proceso %}
+        <a href="{{ url_for('proceso_detail', ot=r.proceso.ot) }}" style="color:var(--purple)">
+          {{ r.proceso.ot }}
         </a>
       {% else %}—{% endif %}
     </td>

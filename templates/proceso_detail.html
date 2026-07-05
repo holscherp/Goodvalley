@@ -82,25 +82,19 @@
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;margin-bottom:8px">
         Residuos
       </div>
-      <div style="display:flex;gap:20px;flex-wrap:wrap">
-        {% if p.kg_carozo %}
+      <div style="display:flex;gap:20px;flex-wrap:nowrap">
         <div>
-          <div style="font-size:.95rem;font-weight:700">{{ "{:,.1f}".format(p.kg_carozo) }} kg</div>
+          <div style="font-size:.95rem;font-weight:700">{{ "{:,.1f}".format(p.kg_carozo) if p.kg_carozo else '—' }}</div>
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:1px">Carozo</div>
         </div>
-        {% endif %}
-        {% if p.kg_descarte %}
         <div>
-          <div style="font-size:.95rem;font-weight:700">{{ "{:,.1f}".format(p.kg_descarte) }} kg</div>
+          <div style="font-size:.95rem;font-weight:700">{{ "{:,.1f}".format(p.kg_descarte) if p.kg_descarte else '—' }}</div>
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:1px">Descarte</div>
         </div>
-        {% endif %}
-        {% if p.kg_contramuestra %}
         <div>
-          <div style="font-size:.95rem;font-weight:700">{{ "{:,.1f}".format(p.kg_contramuestra) }} kg</div>
+          <div style="font-size:.95rem;font-weight:700">{{ "{:,.1f}".format(p.kg_contramuestra) if p.kg_contramuestra else '—' }}</div>
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:1px">Contramuestra</div>
         </div>
-        {% endif %}
       </div>
     </div>
     {% endif %}
@@ -120,16 +114,12 @@
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;margin-bottom:8px">
         Período
       </div>
-      <div style="display:flex;gap:10px;align-items:center">
-        <div>
-          <div style="font-size:.95rem;font-weight:700">{{ p.fecha_inicio_str }}</div>
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:1px">Inicio</div>
-        </div>
-        <div style="color:var(--muted)">→</div>
-        <div>
-          <div style="font-size:.95rem;font-weight:700">{{ p.fecha_fin_str }}</div>
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:1px">Fin</div>
-        </div>
+      <div style="font-size:.95rem;font-weight:700;display:flex;align-items:center;gap:8px">
+        <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600">Inicio</span>
+        {{ p.fecha_inicio_str }}
+        <span style="color:var(--muted)">→</span>
+        <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600">Fin</span>
+        {{ p.fecha_fin_str }}
       </div>
     </div>
   </div>
