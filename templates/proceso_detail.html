@@ -175,6 +175,38 @@
   </div>
   {% endif %}
 
+  {# ── Summary box: EMBARQUE + REPALETIZAJE totals ── #}
+  {% if movimientos %}
+  {% set ns = namespace(kg_emb=0, kg_rep=0) %}
+  {% for m in movimientos %}
+    {% if m.movimiento and 'EMBARQUE' in m.movimiento %}
+      {% set ns.kg_emb = ns.kg_emb + (m.neto or 0) %}
+    {% endif %}
+    {% if m.movimiento and 'REPALETIZAJE' in m.movimiento %}
+      {% set ns.kg_rep = ns.kg_rep + (m.neto or 0) %}
+    {% endif %}
+  {% endfor %}
+  <div style="margin-top:24px;padding:16px 22px;border:1px solid var(--border);border-radius:10px;background:var(--card)">
+    <div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;margin-bottom:12px">
+      Resumen de salidas
+    </div>
+    <div style="display:flex;gap:32px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:1.2rem;font-weight:700;color:#5b21b6">
+          {{ "{:,.1f}".format(ns.kg_emb) if ns.kg_emb else '—' }} kg
+        </div>
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px">Embarque</div>
+      </div>
+      <div>
+        <div style="font-size:1.2rem;font-weight:700;color:var(--purple)">
+          {{ "{:,.1f}".format(ns.kg_rep) if ns.kg_rep else '—' }} kg
+        </div>
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:2px">Repaletizaje</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
 </div>{# end sub-panel #}
 {% endfor %}
 
