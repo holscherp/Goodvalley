@@ -575,52 +575,31 @@ def _upload_pallets(pallets_data):
 async def main():
     SCREENSHOT_DIR.mkdir(exist_ok=True)
     print(f'[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}] '
-          f'Full sync — 3 sesiones paralelas')
+          f'Full sync — Bins en Bodega')
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=True,
             args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
         )
-        ctx_bins, ctx_pallets, ctx_proc = [
-            await browser.new_context() for _ in range(3)
-        ]
+        ctx_bins = await browser.new_context()
         try:
-            print('▶ Scraping Bins + Pallets + Procesos en paralelo...')
-            results = await asyncio.gather(
-                scrape_bins_section(ctx_bins),
-                scrape_pallets_section(ctx_pallets),
-                scrape_procesos_section(ctx_proc),
-                return_exceptions=True,
-            )
+            print('▶ Scraping Bins en Bodega...')
+            bins_data = await scrape_bins_section(ctx_bins)
+        except Exception as e:
+            bins_data = e
         finally:
             await browser.close()
 
-    bins_data, pallets_data, proc_data = results
+    if isinstance(bins_data, Exception):
+        print(f'✗ BINS: {bins_data}', file=sys.stderr)
 
-    for name, data in [('BINS', bins_data), ('PALLETS', pallets_data), ('PROCESOS', proc_data)]:
-        if isinstance(data, Exception):
-            print(f'✗ {name}: {data}', file=sys.stderr)
+    bins_ok = not isinstance(bins_data, Exception)
 
-    bins_ok    = not isinstance(bins_data,    Exception)
-    pallets_ok = not isinstance(pallets_data, Exception)
-    proc_ok    = not isinstance(proc_data,    Exception)
-
-    # ── Enrich pallets with secado/temporada from procesos ───────────────────
-    if pallets_ok and proc_ok and pallets_data and proc_data:
-        by_ot = {p['ot']: p for p in reversed(proc_data)}  # last OT wins
-        for pallet in pallets_data:
-            info = by_ot.get(pallet['ot'], {})
-            if info.get('drying'):
-                pallet['drying'] = info['drying']
-            if info.get('temporada') and not pallet.get('temporada'):
-                pallet['temporada'] = info['temporada']
-
-    # ── Link raw bins and pallets via historico xlsx ──────────────────────────
+    # ── Link raw bins via historico xlsx ─────────────────────────────────────
     # EGRESO A PROCESO rows where TARJA starts with 25/26 are raw bins leaving
     # bodega for processing. TARJA = bin_identifier (10-digit tarja).
-    # IDBINS2 is a short internal ID that does NOT match bin tarjas — ignore it.
-    if HISTORICO_PATH.exists() and (bins_ok or pallets_ok):
+    if HISTORICO_PATH.exists() and bins_ok:
         try:
             import pandas as _pd
             hist = _pd.read_excel(HISTORICO_PATH)
@@ -628,26 +607,16 @@ async def main():
             egreso['TARJA_s'] = (egreso['TARJA'].astype(str).str.strip()
                                  .str.split('.').str[0])
             egreso['OT_s'] = egreso['OT'].astype(str).str.strip()
-            # Keep only rows with a real 10-digit bin tarja (starts 25xx or 26xx)
             egreso = egreso[egreso['TARJA_s'].str.match(r'^2[56]\d{8}$')]
             egreso = egreso[egreso['OT_s'].notna() & (egreso['OT_s'] != 'nan')]
 
-            # TARJA → OT  (used to tag each raw bin with its OT)
             tarja_to_ot = {}
             for _, row in egreso.iterrows():
                 tarja_to_ot[row['TARJA_s']] = row['OT_s']
 
-            # OT → [tarjas]  (used to tag pallets with source bin list)
-            ot_to_tarjas = {}
-            for _, row in egreso.iterrows():
-                ot_to_tarjas.setdefault(row['OT_s'], [])
-                if row['TARJA_s'] not in ot_to_tarjas[row['OT_s']]:
-                    ot_to_tarjas[row['OT_s']].append(row['TARJA_s'])
+            print(f'✓ Historico: {len(tarja_to_ot)} bins mapeados')
 
-            print(f'✓ Historico: {len(tarja_to_ot)} bins mapeados a {len(ot_to_tarjas)} OTs')
-
-            # (a) Tag each raw bin with its OT
-            if bins_ok and bins_data:
+            if bins_data:
                 n_tagged = 0
                 for bin_rec in bins_data:
                     bid = str(bin_rec.get('bin_identifier', '')).strip()
@@ -656,14 +625,6 @@ async def main():
                         bin_rec['ot'] = ot
                         n_tagged += 1
                 print(f'  → {n_tagged}/{len(bins_data)} bins en bodega vinculados a OT')
-
-            # (b) Tag each pallet with the source bin tarjas for its OT
-            if pallets_ok and pallets_data:
-                for pallet in pallets_data:
-                    ot = pallet.get('ot', '')
-                    pallet['bin_identifiers'] = ot_to_tarjas.get(ot, [])
-                total_linked = sum(len(p.get('bin_identifiers', [])) for p in pallets_data)
-                print(f'  → {total_linked} bins vinculados a pallets via OT')
 
         except Exception as e:
             print(f'  WARN historico linking: {e}', file=sys.stderr)
@@ -674,23 +635,12 @@ async def main():
         BINS_OUT.write_text(json.dumps(bins_data, indent=2, ensure_ascii=False))
         print(f'✓ Bins: {len(bins_data)} ciruelas → {BINS_OUT}')
 
-    if pallets_ok:
-        PALLETS_OUT.write_text(json.dumps(pallets_data, indent=2, ensure_ascii=False))
-        print(f'✓ Pallets: {len(pallets_data)} ciruelas → {PALLETS_OUT}')
-
-    if proc_ok:
-        PROCESOS_OUT.write_text(json.dumps(proc_data, indent=2, ensure_ascii=False))
-        print(f'✓ Procesos: {len(proc_data)} OTs → {PROCESOS_OUT}')
-
     if os.environ.get('GV_NO_UPLOAD'):
         print('GV_NO_UPLOAD activo — sin upload.')
         return
 
     if bins_ok and bins_data:
         _upload_bins(bins_data)
-
-    if pallets_ok and pallets_data:
-        _upload_pallets(pallets_data)
 
     print('\n✓ Full sync completado.')
 
