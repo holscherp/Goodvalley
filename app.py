@@ -1611,12 +1611,14 @@ def create_app():
             fechas_p = [o.fecha_primer_embarque for o in ords if o.fecha_primer_embarque]
             fechas_u = [o.fecha_ultimo_embarque for o in ords if o.fecha_ultimo_embarque]
             proceso = next((o.proceso for o in ords if o.proceso), None)
+            kg_salida = sum(o.proceso.kg_salida_bueno or 0 for o in ords if o.proceso) or None
             display_rows.append({
                 'base_ot':               base_ot,
                 'ords':                  ords,
                 'n_lineas':              len(ords),
                 'cliente':               ords[0].cliente,
                 'kg_embarcado':          kg,
+                'kg_salida_bueno':       kg_salida,
                 'fecha_primer_embarque': min(fechas_p) if fechas_p else None,
                 'fecha_ultimo_embarque': max(fechas_u) if fechas_u else None,
                 'proceso':               proceso,

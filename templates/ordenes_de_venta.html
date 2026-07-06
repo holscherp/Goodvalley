@@ -33,7 +33,9 @@
   <thead><tr>
     <th>OT</th>
     <th>Cliente</th>
+    <th class="num">KG Salida (Bueno)</th>
     <th class="num">KG Embarcados</th>
+    <th class="num">% Embarcado</th>
     <th>Primer Embarque</th>
     <th>Último Embarque</th>
     <th>Proceso</th>
@@ -53,7 +55,16 @@
       {% endif %}
     </td>
     <td>{{ r.cliente or '—' }}</td>
+    <td class="num">{{ "{:,.1f}".format(r.kg_salida_bueno) if r.kg_salida_bueno else '—' }}</td>
     <td class="num"><strong>{{ "{:,.1f}".format(r.kg_embarcado) if r.kg_embarcado else '—' }}</strong></td>
+    <td class="num">
+      {% if r.kg_salida_bueno and r.kg_embarcado %}
+        {% set pct = (r.kg_embarcado / r.kg_salida_bueno * 100) %}
+        <span style="font-weight:700;color:{% if pct >= 95 %}#2d6a4f{% elif pct >= 50 %}#e67e22{% else %}#e74c3c{% endif %}">
+          {{ "{:.0f}".format(pct) }}%
+        </span>
+      {% else %}—{% endif %}
+    </td>
     <td class="mono" style="font-size:12px">
       {{ r.fecha_primer_embarque.strftime('%d-%m-%Y') if r.fecha_primer_embarque else '—' }}
     </td>
