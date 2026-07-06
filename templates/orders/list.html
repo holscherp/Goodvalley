@@ -10,15 +10,13 @@
 {% if orders %}
 <table class="grid">
   <thead><tr>
-    <th>#</th><th>Cliente</th><th>Ref.</th><th>Líneas</th>
+    <th>Ref.</th><th>Líneas</th>
     <th class="num">kg pedidos</th><th class="num">kg asignados</th>
     <th>Estado</th><th></th>
   </tr></thead>
   <tbody>
   {% for o in orders %}
     <tr>
-      <td>{{ o.id }}</td>
-      <td><strong>{{ o.customer }}</strong></td>
       <td>{{ o.reference or '—' }}</td>
       <td>{{ o.lines | list | length }}</td>
       <td class="num">{{ "{:,.1f}".format(o.target_kg) }}</td>
