@@ -17,8 +17,6 @@
   <nav>
     <a href="{{ url_for('index') }}"
        class="{{ 'on' if request.endpoint == 'index' else '' }}">Resumen</a>
-    <a href="{{ url_for('list_bins') }}"
-       class="{{ 'on' if request.endpoint and 'bin' in request.endpoint else '' }}">Inventario de Bins</a>
     <a href="{{ url_for('list_orders') }}"
        class="{{ 'on' if request.endpoint and 'order' in request.endpoint else '' }}">Órdenes de Venta</a>
     <a href="{{ url_for('list_procesos') }}"

@@ -14,7 +14,10 @@
 
 <div class="row-between">
   <h2>Stock disponible por calibre y secado</h2>
-  <a class="btn btn-primary" href="{{ url_for('new_order') }}">+ Nueva orden de venta</a>
+  <div style="display:flex;gap:8px">
+    <a class="btn" href="{{ url_for('list_bins') }}" style="background:var(--card);border:1px solid var(--border);color:var(--fg)">Inventario de Bins</a>
+    <a class="btn btn-primary" href="{{ url_for('new_order') }}">+ Nueva orden de venta</a>
+  </div>
 </div>
 <p class="muted">
   Bins disponibles, agrupados por calibre y método de secado.
