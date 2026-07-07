@@ -1568,14 +1568,10 @@ def create_app():
             abort(404)
 
         def _mov_sort_key(m):
-            mov   = (m.movimiento or '').upper().strip()
-            serie = (m.serie or '').upper().strip()
-            is_waste = serie in WASTE_SERIES or 'DESCARTE' in serie
-            if mov == 'EGRESO A PROCESO':
-                return (0, 0, serie)
-            if mov == 'INGRESO DESDE PROCESO':
-                return (1, 1 if is_waste else 0, serie)
-            return (2, 0, mov)
+            # Chronological order; EGRESO A PROCESO wins tiebreaker on same timestamp
+            dt  = m.fecha or datetime.min
+            tie = 0 if (m.movimiento or '').upper().strip() == 'EGRESO A PROCESO' else 1
+            return (dt, tie)
 
         movimientos_by_ot = {}
         for p in sub_procs:
@@ -1657,6 +1653,94 @@ def create_app():
                                base_ot=base,
                                sub_ords=sub_ords,
                                embarques_by_ot=embarques_by_ot)
+
+    # ── Manejo de Descartes ───────────────────────────────────────────────────
+
+    @app.route('/descartes')
+    def list_descartes():
+        from models import HistoricoMovimiento, WASTE_SERIES
+
+        rows = (HistoricoMovimiento.query
+                .filter(HistoricoMovimiento.movimiento == 'INGRESO DESDE PROCESO')
+                .filter(
+                    db.or_(
+                        HistoricoMovimiento.serie.in_(WASTE_SERIES),
+                        HistoricoMovimiento.serie.ilike('%DESCARTE%')
+                    )
+                )
+                .order_by(HistoricoMovimiento.fecha.desc())
+                .all())
+
+        tipos = sorted({(r.serie or '').upper().strip() for r in rows if r.serie})
+        total_kg = sum(r.neto or 0 for r in rows)
+
+        return render_template('descartes.html',
+                               rows=rows,
+                               tipos=tipos,
+                               total_kg=total_kg,
+                               total_rows=len(rows))
+
+    # ── Manejo de Saldos ──────────────────────────────────────────────────────
+
+    @app.route('/saldos')
+    def list_saldos():
+        from models import HistoricoMovimiento, WASTE_SERIES
+        from collections import OrderedDict as _OD
+
+        # All non-waste tarjas that came out of processing
+        produced = (HistoricoMovimiento.query
+                    .filter(HistoricoMovimiento.movimiento == 'INGRESO DESDE PROCESO')
+                    .filter(
+                        ~db.or_(
+                            HistoricoMovimiento.serie.in_(WASTE_SERIES),
+                            HistoricoMovimiento.serie.ilike('%DESCARTE%')
+                        )
+                    )
+                    .order_by(HistoricoMovimiento.fecha)
+                    .all())
+
+        # Tarjas that were shipped or merged (EMBARQUE / EGRESO A REPALETIZAJE / EGRESO REEMBALAJE)
+        consumed_rows = (HistoricoMovimiento.query
+                         .filter(HistoricoMovimiento.movimiento.in_([
+                             'EMBARQUE', 'EGRESO A REPALETIZAJE', 'EGRESO REEMBALAJE'
+                         ]))
+                         .all())
+
+        # Build {exact_ot: {tarja, ...}} for consumed lookup
+        consumed_by_ot = {}
+        for r in consumed_rows:
+            if r.tarja:
+                consumed_by_ot.setdefault(r.ot, set()).add(r.tarja.strip())
+
+        # Group produced by base OT; find leftover (produced but not consumed)
+        groups = _OD()
+        for r in produced:
+            groups.setdefault(_ot_base(r.ot), []).append(r)
+
+        saldos = []
+        for base_ot, prod_rows in groups.items():
+            leftover = []
+            for r in prod_rows:
+                tarja = (r.tarja or '').strip()
+                ot_consumed = consumed_by_ot.get(r.ot, set())
+                if not tarja or tarja not in ot_consumed:
+                    leftover.append(r)
+            if leftover:
+                total_kg = sum(r.neto or 0 for r in leftover)
+                saldos.append({
+                    'base_ot':  base_ot,
+                    'tarjas':   sorted(leftover, key=lambda r: r.fecha or datetime.min),
+                    'total_kg': total_kg,
+                    'n_tarjas': len(leftover),
+                })
+
+        saldos.sort(key=lambda s: s['total_kg'], reverse=True)
+        total_kg_all = sum(s['total_kg'] for s in saldos)
+
+        return render_template('saldos.html',
+                               saldos=saldos,
+                               total_kg=total_kg_all,
+                               total_ots=len(saldos))
 
     # ── Import Histórico ──────────────────────────────────────────────────────
 

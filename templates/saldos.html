@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+{% block title %}Saldos · Goodvalley{% endblock %}
+
+{% block content %}
+<div class="row-between">
+  <div>
+    <h1>Manejo de Saldos</h1>
+    <p class="muted">Fruta procesada/empacada que aún no ha sido embarcada, por orden.</p>
+  </div>
+  <div class="cards" style="margin:0;gap:10px">
+    <div class="card" style="padding:12px 18px">
+      <div class="big">{{ total_ots }}</div>
+      <div class="lbl" style="text-transform:uppercase;letter-spacing:.05em;font-size:11px">OTs con Saldo</div>
+    </div>
+    <div class="card" style="padding:12px 22px">
+      <div class="big" style="font-size:1.5rem">{{ "{:,.0f}".format(total_kg) }}</div>
+      <div class="lbl" style="text-transform:uppercase;letter-spacing:.05em;font-size:11px">KG Total Saldo</div>
+    </div>
+  </div>
+</div>
+
+{% if saldos %}
+<div style="margin-bottom:10px">
+  <input id="saldo-search" type="text" placeholder="Buscar OT, tarja, calibre…"
+         style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
+                background:var(--card);color:var(--fg);font-size:13px;width:280px"
+         oninput="filterSaldo(this.value)">
+</div>
+
+<table class="grid tight" id="saldo-table">
+  <thead><tr>
+    <th>OT</th>
+    <th>Tarja</th>
+    <th>Fecha</th>
+    <th>Serie / Calibre</th>
+    <th>Producto</th>
+    <th>Tipo Proceso</th>
+    <th class="num">KG Neto</th>
+    <th>Bodega</th>
+  </tr></thead>
+  <tbody>
+  {% for s in saldos %}
+  {# Group header row #}
+  <tr class="ot-header" data-ot="{{ s.base_ot }}"
+      style="background:var(--lavender)">
+    <td colspan="6" style="padding:8px 12px;font-weight:700">
+      <a href="{{ url_for('proceso_detail', ot=s.base_ot) }}"
+         style="color:var(--purple);text-decoration:none">{{ s.base_ot }}</a>
+      <span style="font-weight:400;font-size:12px;color:var(--muted);margin-left:8px">
+        {{ s.n_tarjas }} tarja{{ 's' if s.n_tarjas != 1 else '' }}
+      </span>
+    </td>
+    <td class="num" style="padding:8px 12px;font-weight:700;color:var(--purple)">
+      {{ "{:,.1f}".format(s.total_kg) }} kg
+    </td>
+    <td></td>
+  </tr>
+  {# Individual leftover tarja rows #}
+  {% for r in s.tarjas %}
+  <tr class="tarja-row" data-ot="{{ s.base_ot }}">
+    <td class="mono" style="font-size:11px;color:var(--muted)">{{ r.ot }}</td>
+    <td class="mono" style="font-size:12px">{{ r.tarja or '—' }}</td>
+    <td class="mono" style="font-size:12px">{{ r.fecha_str or '—' }}</td>
+    <td class="mono">{{ r.serie or '—' }}</td>
+    <td style="font-size:12px">{{ r.producto or '—' }}</td>
+    <td style="font-size:12px">{{ r.tipoproceso or '—' }}</td>
+    <td class="num"><strong>{{ "{:,.1f}".format(r.neto) if r.neto else '—' }}</strong></td>
+    <td style="font-size:12px">{{ r.bodega or '—' }}</td>
+  </tr>
+  {% endfor %}
+  {% endfor %}
+  </tbody>
+</table>
+
+<script>
+function filterSaldo(q) {
+  q = q.toLowerCase();
+  document.querySelectorAll('#saldo-table tbody tr.tarja-row').forEach(function(tr) {
+    tr.style.display = !q || tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+  document.querySelectorAll('#saldo-table tbody tr.ot-header').forEach(function(header) {
+    var ot = header.dataset.ot;
+    var anyVisible = false;
+    document.querySelectorAll(
+      '#saldo-table tbody tr.tarja-row[data-ot="' + ot + '"]'
+    ).forEach(function(row) {
+      if (row.style.display !== 'none') anyVisible = true;
+    });
+    header.style.display = anyVisible ? '' : 'none';
+  });
+}
+</script>
+
+{% else %}
+<div class="empty">
+  <p>No hay saldos pendientes — todas las órdenes con registro de proceso han sido embarcadas.</p>
+  <p class="muted" style="margin-top:6px">Si esperás ver saldos, subí el Histórico desde <strong>Actualizar → Subir Histórico</strong>.</p>
+</div>
+{% endif %}
+{% endblock %}

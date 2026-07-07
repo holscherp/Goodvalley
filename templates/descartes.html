@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+{% block title %}Descartes · Goodvalley{% endblock %}
+
+{% block content %}
+<div class="row-between">
+  <div>
+    <h1>Manejo de Descartes</h1>
+    <p class="muted">Salidas de proceso clasificadas como descarte, agrupadas por tipo.</p>
+  </div>
+  <div class="cards" style="margin:0;gap:10px">
+    <div class="card" style="padding:12px 18px">
+      <div class="big">{{ total_rows }}</div>
+      <div class="lbl" style="text-transform:uppercase;letter-spacing:.05em;font-size:11px">Registros</div>
+    </div>
+    <div class="card" style="padding:12px 22px">
+      <div class="big" style="font-size:1.5rem">{{ "{:,.0f}".format(total_kg) }}</div>
+      <div class="lbl" style="text-transform:uppercase;letter-spacing:.05em;font-size:11px">KG Total</div>
+    </div>
+  </div>
+</div>
+
+{% if rows %}
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+  <input id="desc-search" type="text" placeholder="Buscar OT, tarja…"
+         style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
+                background:var(--card);color:var(--fg);font-size:13px;width:220px"
+         oninput="filterDesc()">
+  <select id="desc-tipo" onchange="filterDesc()"
+          style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
+                 background:var(--card);color:var(--fg);font-size:13px">
+    <option value="">Todos los tipos</option>
+    {% for t in tipos %}
+    <option value="{{ t }}">{{ t }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+<table class="grid tight" id="desc-table">
+  <thead><tr>
+    <th>Fecha</th>
+    <th>OT</th>
+    <th>Tarja</th>
+    <th>Tipo Descarte</th>
+    <th>Producto</th>
+    <th class="num">KG Neto</th>
+    <th>Tipo Proceso</th>
+    <th>Temporada</th>
+    <th>Productor</th>
+    <th>Bodega</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr data-tipo="{{ (r.serie or '') | upper }}">
+    <td class="mono" style="font-size:12px">{{ r.fecha_str or '—' }}</td>
+    <td class="mono" style="font-size:12px">
+      <a href="{{ url_for('proceso_detail', ot=r.ot) }}" style="color:var(--purple)">{{ r.ot }}</a>
+    </td>
+    <td class="mono" style="font-size:12px">{{ r.tarja or '—' }}</td>
+    <td>
+      <span style="font-size:11px;font-weight:700;color:#e74c3c">
+        {{ r.serie or '—' }}
+      </span>
+    </td>
+    <td style="font-size:12px">{{ r.producto or '—' }}</td>
+    <td class="num"><strong>{{ "{:,.1f}".format(r.neto) if r.neto else '—' }}</strong></td>
+    <td style="font-size:12px">{{ r.tipoproceso or '—' }}</td>
+    <td style="font-size:12px">{{ r.temporada_str or '—' }}</td>
+    <td style="font-size:12px">{{ r.productor or '—' }}</td>
+    <td style="font-size:12px">{{ r.bodega or '—' }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+  <tfoot>
+    <tr style="font-weight:600;border-top:2px solid var(--border)">
+      <td colspan="5" style="text-align:right;padding-right:12px">Total</td>
+      <td class="num">{{ "{:,.1f}".format(total_kg) }}</td>
+      <td colspan="4"></td>
+    </tr>
+  </tfoot>
+</table>
+
+<script>
+function filterDesc() {
+  var q    = document.getElementById('desc-search').value.toLowerCase();
+  var tipo = document.getElementById('desc-tipo').value.toUpperCase();
+  document.querySelectorAll('#desc-table tbody tr').forEach(function(tr) {
+    var matchQ    = !q    || tr.textContent.toLowerCase().includes(q);
+    var matchTipo = !tipo || tr.dataset.tipo === tipo;
+    tr.style.display = (matchQ && matchTipo) ? '' : 'none';
+  });
+}
+</script>
+
+{% else %}
+<div class="empty">
+  <p>No hay registros de descarte.</p>
+  <p class="muted" style="margin-top:6px">Subí el Histórico para Camilo desde <strong>Actualizar → Subir Histórico</strong>.</p>
+</div>
+{% endif %}
+{% endblock %}
