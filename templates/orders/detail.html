@@ -187,7 +187,7 @@
         <tr>
           <td class="mono">{{ b.bin_identifier }}</td>
           <td>{{ b.producto or '—' }}</td>
-          <td>{{ b.caliber or 'N/A' }}</td>
+          <td>{{ b.caliber or 'N/A' }}{% if b.u_lb and b.u_lb > 0 %} · {{ b.u_lb | int }}{% endif %}</td>
           <td><span class="pill pill-{{ b.drying }}">{{ b.drying_label }}</span></td>
           <td class="num">{{ b.weight_kg }}</td>
           <td class="num">{{ b.humedad if b.humedad is not none else '—' }}</td>
@@ -244,6 +244,11 @@
           {% endfor %}
         </select>
       </div>
+      <div class="fld">
+        <label>U/LB exacto</label>
+        <input type="number" name="u_lb_f" value="{{ u_lb_f or '' }}"
+               placeholder="ej. 45" style="width:72px">
+      </div>
       <button class="btn btn-primary" style="align-self:flex-end">Buscar</button>
     </form>
 
@@ -279,7 +284,7 @@
                          data-kg="{{ b.weight_kg }}" onchange="updateSel{{ line.id }}()"></td>
               <td class="mono">{{ b.bin_identifier }}</td>
               <td>{{ b.producto or '—' }}</td>
-              <td>{{ b.caliber or 'N/A' }}</td>
+              <td>{{ b.caliber or 'N/A' }}{% if b.u_lb and b.u_lb > 0 %} · {{ b.u_lb | int }}{% endif %}</td>
               <td><span class="pill pill-{{ b.drying }}">{{ b.drying_label }}</span></td>
               <td class="num">{{ b.weight_kg }}</td>
               <td class="num">{{ b.humedad if b.humedad is not none else '—' }}</td>
