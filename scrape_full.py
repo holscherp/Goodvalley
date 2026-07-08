@@ -240,10 +240,13 @@ def _transform_bins(raw_rows):
         else:
             temporada = None
 
+        u_lb_raw = _rv(row, 'U_LB', 6)
+        u_lb     = float(u_lb_raw) if u_lb_raw and float(u_lb_raw) > 0 else None
         bins.append({
             'bin_identifier': tarja_str,
             'producto':       producto,
             'caliber':        caliber or '',
+            'u_lb':           u_lb,
             'drying':         drying,
             'weight_kg':      weight,
             'humedad':        humedad if humedad and humedad > 0 else None,

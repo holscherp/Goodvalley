@@ -83,7 +83,7 @@
     <tr class="st-{{ b.status }}">
       <td class="mono">{{ b.bin_identifier }}</td>
       <td>{{ b.producto or '—' }}</td>
-      <td>{{ b.caliber or 'N/A' }}</td>
+      <td>{{ b.caliber or 'N/A' }}{% if b.u_lb and b.u_lb > 0 %} · {{ b.u_lb | int }}{% endif %}</td>
       <td>
         {% if b.drying %}
           <span class="pill pill-{{ b.drying }}">{{ b.drying_label }}</span>

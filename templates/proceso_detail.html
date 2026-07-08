@@ -157,7 +157,7 @@
       </td>
       <td class="mono" style="font-size:12px">{{ m.tarja or '—' }}</td>
       <td class="mono" style="font-weight:{% if m.movimiento and 'INGRESO' in m.movimiento and not m.is_waste %}600{% else %}400{% endif %}">
-        {{ m.serie or '—' }}
+        {{ m.serie or '—' }}{% if m.u_lb and m.u_lb > 0 %} · {{ m.u_lb | int }}{% endif %}
       </td>
       <td style="font-size:12px">{{ m.producto or '—' }}</td>
       <td style="font-size:12px">{{ m.productor or '—' }}</td>

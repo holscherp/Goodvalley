@@ -158,6 +158,7 @@ class Bin(db.Model):
     bin_identifier = db.Column(db.String(50), unique=True, nullable=False)
     producto      = db.Column(db.String(200), nullable=True)
     caliber       = db.Column(db.String(20),  nullable=True)
+    u_lb          = db.Column(db.Float,       nullable=True)
     drying        = db.Column(db.String(30),  nullable=True)
     weight_kg     = db.Column(db.Float, default=0.0)
     humedad       = db.Column(db.Float, nullable=True)

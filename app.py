@@ -284,6 +284,7 @@ def create_app():
                                 'weight_kg': weight,
                                 'humedad': b.get('humedad'),
                                 'caliber': b.get('caliber') or '',
+                                'u_lb': b.get('u_lb'),
                                 'drying': drying,
                                 'producto': b.get('producto') or '',
                                 'contenedor': b.get('contenedor') or '',
@@ -296,6 +297,7 @@ def create_app():
                                 bin_identifier=bid,
                                 producto=b.get('producto') or '',
                                 caliber=b.get('caliber') or '',
+                                u_lb=b.get('u_lb'),
                                 drying=drying,
                                 weight_kg=weight,
                                 humedad=b.get('humedad'),
@@ -442,6 +444,7 @@ def create_app():
                                     'weight_kg': weight,
                                     'humedad': b.get('humedad'),
                                     'caliber': b.get('caliber') or '',
+                                    'u_lb': b.get('u_lb'),
                                     'drying': drying,
                                     'producto': b.get('producto') or '',
                                     'contenedor': b.get('contenedor') or '',
@@ -454,6 +457,7 @@ def create_app():
                                     bin_identifier=bid,
                                     producto=b.get('producto') or '',
                                     caliber=b.get('caliber') or '',
+                                    u_lb=b.get('u_lb'),
                                     drying=drying,
                                     weight_kg=weight,
                                     humedad=b.get('humedad'),
@@ -2194,6 +2198,7 @@ def _migrate(db_obj):
     """Additive schema migrations — safe to run on every startup."""
     stmts = [
         # bins — new columns
+        'ALTER TABLE bins ADD COLUMN IF NOT EXISTS u_lb FLOAT',
         'ALTER TABLE bins ADD COLUMN IF NOT EXISTS producto VARCHAR(200)',
         'ALTER TABLE bins ADD COLUMN IF NOT EXISTS caliber VARCHAR(20)',
         'ALTER TABLE bins ADD COLUMN IF NOT EXISTS drying VARCHAR(30)',
