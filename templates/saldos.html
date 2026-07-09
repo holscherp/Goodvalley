@@ -22,6 +22,7 @@
 {% if saldos %}
 <div style="margin-bottom:10px">
   <input id="saldo-search" type="text" placeholder="Buscar OT, tarja, calibre…"
+         value="{{ q_init }}"
          style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
                 background:var(--card);color:var(--fg);font-size:13px;width:280px"
          oninput="filterSaldo(this.value)">
@@ -89,6 +90,11 @@ function filterSaldo(q) {
     header.style.display = anyVisible ? '' : 'none';
   });
 }
+{% if q_init %}
+document.addEventListener('DOMContentLoaded', function() {
+  filterSaldo({{ q_init | tojson }});
+});
+{% endif %}
 </script>
 
 {% else %}

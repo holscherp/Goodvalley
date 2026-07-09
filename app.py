@@ -1009,8 +1009,11 @@ def create_app():
                 }
                 q = Bin.query.filter_by(status='available')
                 caliber_f = request.args.get('caliber_f') or line.caliber
+                u_lb_f    = request.args.get('u_lb_f', type=int)
                 if caliber_f:
                     q = q.filter(Bin.caliber == caliber_f)
+                if u_lb_f:
+                    q = q.filter(Bin.u_lb == float(u_lb_f))
                 if line.drying:
                     q = q.filter(Bin.drying == line.drying)
                 if line.temporada:
@@ -1043,6 +1046,7 @@ def create_app():
             search_bins=search_bins,
             search_excedentes=search_excedentes,
             search_line_id=search_line_id,
+            u_lb_f=u_lb_f if search_line_id else None,
             CALIBER_OPTIONS=CALIBER_OPTIONS,
             DRYING_LABELS=DRYING_LABELS,
         )
@@ -1751,10 +1755,12 @@ def create_app():
         saldos.sort(key=lambda s: s['total_kg'], reverse=True)
         total_kg_all = sum(s['total_kg'] for s in saldos)
 
+        q_init = request.args.get('q', '')
         return render_template('saldos.html',
                                saldos=saldos,
                                total_kg=total_kg_all,
-                               total_ots=len(saldos))
+                               total_ots=len(saldos),
+                               q_init=q_init)
 
     # ── Import Histórico ──────────────────────────────────────────────────────
 
