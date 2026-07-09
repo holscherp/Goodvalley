@@ -186,7 +186,7 @@
     {% if m.movimiento and 'EMBARQUE' in m.movimiento %}
       {% set ns.kg_emb = ns.kg_emb + (m.neto or 0) %}
     {% endif %}
-    {% if m.movimiento and 'REPALETIZAJE' in m.movimiento %}
+    {% if m.movimiento and 'EGRESO A REPALETIZAJE' in m.movimiento %}
       {% set ns.kg_rep = ns.kg_rep + (m.neto or 0) %}
     {% endif %}
   {% endfor %}
