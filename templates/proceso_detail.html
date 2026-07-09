@@ -2,8 +2,12 @@
 {% block title %}OT {{ base_ot }} · Procesos · Goodvalley{% endblock %}
 
 {% block content %}
-<div style="margin-bottom:18px">
+<div style="margin-bottom:18px;display:flex;align-items:center;gap:16px">
   <a href="{{ url_for('list_procesos') }}" style="color:var(--purple);font-size:13px">← Procesos</a>
+  <a href="{{ url_for('orden_de_venta_detail', ot=base_ot) }}"
+     class="btn" style="font-size:12px;padding:5px 14px;background:var(--card);border:1px solid var(--border);color:var(--purple)">
+    Ver en Embarques →
+  </a>
 </div>
 
 <h1 style="font-size:1.6rem;margin-bottom:6px">OT {{ base_ot }}</h1>
