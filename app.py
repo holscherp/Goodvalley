@@ -1714,35 +1714,63 @@ def create_app():
                          ]))
                          .all())
 
-        # Build {exact_ot: {tarja, ...}} for consumed lookup
-        # Also track which exact OTs have at least one real EMBARQUE
+        # New tarjas created by repaletizaje (TSC-style repacking)
+        repalet_rows = (HistoricoMovimiento.query
+                        .filter(HistoricoMovimiento.movimiento == 'REPALETIZAJE')
+                        .order_by(HistoricoMovimiento.fecha)
+                        .all())
+
+        # Build lookup dicts
         consumed_by_ot = {}
         ots_with_embarque = set()
+        shipped_by_ot = {}  # EMBARQUE only — for checking repaletizaje leftovers
         for r in consumed_rows:
             if r.tarja:
                 consumed_by_ot.setdefault(r.ot, set()).add(r.tarja.strip())
             if r.movimiento == 'EMBARQUE':
                 ots_with_embarque.add(r.ot)
+                if r.tarja:
+                    shipped_by_ot.setdefault(r.ot, set()).add(r.tarja.strip())
 
-        # Group produced by base OT; find leftover (produced but not consumed)
+        # Group produced and repaletizaje rows by base OT
         groups = _OD()
         for r in produced:
             groups.setdefault(_ot_base(r.ot), []).append(r)
 
+        repalet_by_base_ot = {}
+        for r in repalet_rows:
+            repalet_by_base_ot.setdefault(_ot_base(r.ot), []).append(r)
+
+        all_base_ots = list(_OD.fromkeys(list(groups.keys()) + list(repalet_by_base_ot.keys())))
+
         saldos = []
-        for base_ot, prod_rows in groups.items():
+        for base_ot in all_base_ots:
+            prod_rows = groups.get(base_ot, [])
+            rep_rows  = repalet_by_base_ot.get(base_ot, [])
+
             # If nothing was ever shipped for any sub-OT, it's not a saldo —
             # it's just an order that hasn't shipped yet at all
-            sub_ots = {r.ot for r in prod_rows}
+            sub_ots = {r.ot for r in prod_rows} | {r.ot for r in rep_rows}
             if not any(ot in ots_with_embarque for ot in sub_ots):
                 continue
 
             leftover = []
+
+            # Original tarjas (INGRESO DESDE PROCESO) not consumed
             for r in prod_rows:
                 tarja = (r.tarja or '').strip()
                 ot_consumed = consumed_by_ot.get(r.ot, set())
                 if not tarja or tarja not in ot_consumed:
                     leftover.append(r)
+
+            # Repaletizaje-created tarjas not shipped (TSC blind spot fix)
+            for r in rep_rows:
+                tarja = (r.tarja or '').strip()
+                if not tarja:
+                    continue
+                if tarja not in shipped_by_ot.get(r.ot, set()):
+                    leftover.append(r)
+
             if leftover:
                 total_kg = sum(r.neto or 0 for r in leftover)
                 saldos.append({
