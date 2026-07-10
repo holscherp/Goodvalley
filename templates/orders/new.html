@@ -173,18 +173,11 @@ function getPairs(containerSelector, valName, pctName) {
   return pairs.length ? pairs : [['', 100]];
 }
 
-function getYieldRate(productType, drying, calStr) {
+function getYieldRate(productType, calStr) {
   if (!productType || !YIELD_TABLE[productType]) return null;
   var entry = YIELD_TABLE[productType];
   if (typeof entry === 'number') return entry;
-  // keyed by cal_num
-  if (calStr && calStr.includes('/')) {
-    var parts = calStr.split('/');
-    var mid = (parseFloat(parts[0]) + parseFloat(parts[1])) / 2;
-    var calNum = Math.round(mid);
-    if (entry[calNum]) return entry[calNum];
-  }
-  return entry['default'] || null;
+  return (calStr && entry[calStr]) ? entry[calStr] : null;
 }
 
 function updatePreview() {
@@ -228,7 +221,7 @@ function updatePreview() {
     dryPairs.forEach(function(dp) {
       var kg = Math.round(totalKg * (cp[1]/100) * (dp[1]/100) * 10) / 10;
       totalPT += kg;
-      var yld = getYieldRate(productType, dp[0], cp[0]);
+      var yld = getYieldRate(productType, cp[0]);
       var mpKg = yld ? Math.round(kg / yld * 10) / 10 : null;
       if (mpKg) { totalMP += mpKg; anyYield = true; }
       var calLabel = cp[0] || 'Cualquiera';

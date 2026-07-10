@@ -1021,17 +1021,17 @@ def create_app():
 
     @app.route('/orders/new')
     def new_order():
-        from models import CALIBER_OPTIONS, DRYING_LABELS, _YIELD_TABLE, _FLAT_YIELD, _tipo_key, CALIBER_TO_NUM
-        # Build yield table keyed by product_type for JS preview
-        _pt_map = {'tsc':'tsc','tcc':'tcc','ss':'ss','elliot':'elliot','cn':'natural'}
+        from models import CALIBER_OPTIONS, DRYING_LABELS, get_yield
+        # Build yield preview keyed by caliber string for the JS preview
         yield_table = {}
-        for pt, tipo in _pt_map.items():
-            by_cal = {cal_num: rate for (t,cal_num), rate in _YIELD_TABLE.items() if t == tipo}
+        for pt in ['tsc', 'tcc', 'ss', 'elliot', 'cn']:
+            by_cal = {}
+            for c in CALIBER_OPTIONS:
+                r = get_yield(pt, None, c)
+                if r:
+                    by_cal[c] = round(r, 3)
             if by_cal:
-                by_cal['default'] = _FLAT_YIELD.get(tipo)
                 yield_table[pt] = by_cal
-            elif tipo in _FLAT_YIELD:
-                yield_table[pt] = _FLAT_YIELD[tipo]
         return render_template('orders/new.html',
             CALIBER_OPTIONS=CALIBER_OPTIONS,
             DRYING_LABELS=DRYING_LABELS,
