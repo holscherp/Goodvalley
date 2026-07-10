@@ -86,7 +86,7 @@ def get_yield(product_type, drying, caliber):
     return _FLAT_YIELD.get(tipo)
 
 DRYING_LABELS = {
-    'cancha':         'Cancha / Sol',
+    'cancha':         'Sol',
     'horno':          'Horno',
     'termino_secado': 'Término secado',
 }

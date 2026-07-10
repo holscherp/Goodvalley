@@ -955,41 +955,87 @@ def create_app():
             flash('El nombre del cliente es obligatorio.', 'err')
             return redirect(url_for('list_orders'))
 
-        caliber       = request.form.get('caliber')       or None
-        drying        = request.form.get('drying')        or None
-        target_kg     = request.form.get('target_kg', '0')
+        try:
+            total_kg = float(request.form.get('target_kg', 0))
+        except (ValueError, TypeError):
+            total_kg = 0.0
+
         max_humedad   = request.form.get('max_humedad')   or None
         temporada     = request.form.get('temporada')     or None
         product_type  = request.form.get('product_type')  or None
         fruit_quality = request.form.get('fruit_quality') or None
-        line_notes    = request.form.get('line_notes', '').strip() or None
 
-        try:
-            tkg = float(target_kg)
-        except (ValueError, TypeError):
-            tkg = 0.0
+        # Build calibre/drying breakdown from percentage rows
+        calibers     = request.form.getlist('caliber[]')
+        caliber_pcts = request.form.getlist('caliber_pct[]')
+        dryings      = request.form.getlist('drying[]')
+        drying_pcts  = request.form.getlist('drying_pct[]')
+
+        cal_pairs = []
+        for c, p in zip(calibers, caliber_pcts):
+            try:
+                pct = float(p)
+                if pct > 0:
+                    cal_pairs.append((c or None, pct))
+            except (ValueError, TypeError):
+                pass
+
+        dry_pairs = []
+        for d, p in zip(dryings, drying_pcts):
+            try:
+                pct = float(p)
+                if pct > 0:
+                    dry_pairs.append((d or None, pct))
+            except (ValueError, TypeError):
+                pass
+
+        # Default: single unconstrained line
+        if not cal_pairs:
+            cal_pairs = [(None, 100.0)]
+        if not dry_pairs:
+            dry_pairs = [(None, 100.0)]
 
         order = Order(customer=customer, reference=reference, notes=notes)
         db.session.add(order)
         db.session.flush()
 
-        line = OrderLine(
-            order_id=order.id, caliber=caliber, drying=drying,
-            target_kg=tkg,
-            max_humedad=float(max_humedad) if max_humedad else None,
-            temporada=temporada, product_type=product_type,
-            fruit_quality=fruit_quality, notes=line_notes,
-        )
-        db.session.add(line)
+        for cal, cal_pct in cal_pairs:
+            for dry, dry_pct in dry_pairs:
+                line_kg = round(total_kg * (cal_pct / 100.0) * (dry_pct / 100.0), 1)
+                line = OrderLine(
+                    order_id=order.id,
+                    caliber=cal,
+                    drying=dry,
+                    target_kg=line_kg,
+                    max_humedad=float(max_humedad) if max_humedad else None,
+                    temporada=temporada,
+                    product_type=product_type,
+                    fruit_quality=fruit_quality,
+                )
+                db.session.add(line)
+
         db.session.commit()
-        flash(f'Orden #{order.id} creada.', 'ok')
+        n_lines = len(cal_pairs) * len(dry_pairs)
+        flash(f'Orden #{order.id} creada con {n_lines} línea{"s" if n_lines != 1 else ""}.', 'ok')
         return redirect(url_for('order_detail', order_id=order.id))
 
     @app.route('/orders/new')
     def new_order():
-        from models import CALIBER_OPTIONS, DRYING_LABELS
+        from models import CALIBER_OPTIONS, DRYING_LABELS, _YIELD_TABLE, _FLAT_YIELD, _tipo_key, CALIBER_TO_NUM
+        # Build yield table keyed by product_type for JS preview
+        _pt_map = {'tsc':'tsc','tcc':'tcc','ss':'ss','elliot':'elliot','cn':'natural'}
+        yield_table = {}
+        for pt, tipo in _pt_map.items():
+            by_cal = {cal_num: rate for (t,cal_num), rate in _YIELD_TABLE.items() if t == tipo}
+            if by_cal:
+                by_cal['default'] = _FLAT_YIELD.get(tipo)
+                yield_table[pt] = by_cal
+            elif tipo in _FLAT_YIELD:
+                yield_table[pt] = _FLAT_YIELD[tipo]
         return render_template('orders/new.html',
-            CALIBER_OPTIONS=CALIBER_OPTIONS, DRYING_LABELS=DRYING_LABELS)
+            CALIBER_OPTIONS=CALIBER_OPTIONS,
+            DRYING_LABELS=DRYING_LABELS,
+            YIELD_TABLE=yield_table)
 
     @app.route('/orders/<int:order_id>')
     def order_detail(order_id):

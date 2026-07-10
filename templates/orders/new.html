@@ -1,87 +1,278 @@
 {% extends 'base.html' %}
 {% block title %}Nueva Orden · Goodvalley{% endblock %}
 
-{% macro line_fields() %}
-<div class="fld">
-  <label>Calibre</label>
-  <select name="caliber">
-    <option value="">Cualquiera</option>
-    {% for c in CALIBER_OPTIONS %}
-      <option value="{{ c }}">{{ c }}</option>
-    {% endfor %}
-  </select>
-</div>
-<div class="fld">
-  <label>Secado</label>
-  <select name="drying">
-    <option value="">Cualquiera</option>
-    <option value="horno">Horno</option>
-    <option value="cancha">Cancha / Sol (campo)</option>
-    <option value="termino_secado">Término secado</option>
-  </select>
-</div>
-<div class="fld">
-  <label>Cantidad pedida (kg) *</label>
-  <input type="number" step="0.1" name="target_kg" required placeholder="2000">
-</div>
-<div class="fld">
-  <label>Humedad máx %</label>
-  <input type="number" step="0.1" name="max_humedad" placeholder="(opcional)">
-</div>
-<div class="fld">
-  <label>Temporada</label>
-  <input type="text" name="temporada" placeholder="(cualquiera)">
-</div>
-<div class="fld">
-  <label>Tipo de proceso</label>
-  <select name="product_type">
-    <option value="">Sin especificar</option>
-    <option value="tsc">TSC</option>
-    <option value="ss">SS</option>
-    <option value="tcc">TCC</option>
-    <option value="elliot">Elliot</option>
-    <option value="cn">CN</option>
-  </select>
-</div>
-<div class="fld">
-  <label>Calidad de fruta</label>
-  <select name="fruit_quality">
-    <option value="">Sin especificar</option>
-    <option value="deluxe">Deluxe</option>
-    <option value="premium">Premium</option>
-    <option value="estandar">Estándar</option>
-    <option value="base">Base</option>
-  </select>
-</div>
-{% endmacro %}
-
 {% block content %}
 <h1>Nueva orden de venta</h1>
-<p class="muted">Definí qué pide el cliente. La orden busca los bins que coinciden
-  con la descripción para que asignes bins reales sin venderlos dos veces.</p>
+<p class="muted">Definí el pedido con distribución por calibre y secado. El sistema calculará cuántos kg necesitás de cada tipo.</p>
 
-<form class="card-form" method="post" action="{{ url_for('create_order') }}">
+<form id="order-form" class="card-form" method="post" action="{{ url_for('create_order') }}" onsubmit="return validateForm()">
+
   <h3>Cliente</h3>
-  <div class="fld grow">
-    <label>Cliente *</label>
-    <input type="text" name="customer" required placeholder="Nombre del comprador">
-  </div>
-  <div class="fld grow">
-    <label>Referencia / PO</label>
-    <input type="text" name="reference" placeholder="(opcional)">
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <div class="fld grow">
+      <label>Cliente *</label>
+      <input type="text" name="customer" required placeholder="Nombre del comprador">
+    </div>
+    <div class="fld grow">
+      <label>Referencia / PO</label>
+      <input type="text" name="reference" placeholder="(opcional)">
+    </div>
   </div>
 
-  <h3>Primera línea de pedido</h3>
-  {{ line_fields() }}
+  <h3>Especificaciones</h3>
+  <div style="display:flex;gap:12px;flex-wrap:wrap">
+    <div class="fld">
+      <label>Tipo de proceso</label>
+      <select name="product_type">
+        <option value="">Sin especificar</option>
+        <option value="tsc">TSC</option>
+        <option value="ss">SS</option>
+        <option value="tcc">TCC</option>
+        <option value="elliot">Elliot</option>
+        <option value="cn">CN</option>
+      </select>
+    </div>
+    <div class="fld">
+      <label>Calidad de fruta</label>
+      <select name="fruit_quality">
+        <option value="">Sin especificar</option>
+        <option value="deluxe">Deluxe</option>
+        <option value="premium">Premium</option>
+        <option value="estandar">Estándar</option>
+        <option value="base">Base</option>
+      </select>
+    </div>
+    <div class="fld">
+      <label>Temporada</label>
+      <input type="text" name="temporada" placeholder="(cualquiera)">
+    </div>
+    <div class="fld">
+      <label>Humedad máx %</label>
+      <input type="number" step="0.1" name="max_humedad" placeholder="(opcional)">
+    </div>
+    <div class="fld">
+      <label>KG totales pedidos (PT) *</label>
+      <input type="number" step="0.1" name="target_kg" id="total-kg" required
+             placeholder="ej. 1000" oninput="updatePreview()">
+    </div>
+  </div>
 
-  <div class="fld grow">
+  <h3 style="margin-top:20px">Distribución por calibre</h3>
+  <p class="muted" style="margin-bottom:10px">
+    Si el pedido es de un solo calibre, añadí una fila con 100%.
+    Si no importa el calibre, dejá esta sección vacía.
+  </p>
+  <div id="cal-rows" style="display:flex;flex-direction:column;gap:6px"></div>
+  <div style="display:flex;align-items:center;gap:14px;margin-top:8px">
+    <button type="button" class="btn btn-ghost" style="font-size:12px;padding:5px 12px"
+            onclick="addCalRow()">+ Agregar calibre</button>
+    <span id="cal-sum" style="font-size:12px;color:var(--muted)"></span>
+  </div>
+
+  <h3 style="margin-top:20px">Distribución por secado</h3>
+  <p class="muted" style="margin-bottom:10px">
+    Si querés mezclar métodos de secado, añadí una fila por método con su porcentaje.
+    Si no importa el secado, dejá esta sección vacía.
+  </p>
+  <div id="dry-rows" style="display:flex;flex-direction:column;gap:6px"></div>
+  <div style="display:flex;align-items:center;gap:14px;margin-top:8px">
+    <button type="button" class="btn btn-ghost" style="font-size:12px;padding:5px 12px"
+            onclick="addDryRow()">+ Agregar secado</button>
+    <span id="dry-sum" style="font-size:12px;color:var(--muted)"></span>
+  </div>
+
+  <div id="preview-box" style="display:none;margin-top:24px;padding:16px 20px;
+       border:1px solid var(--border);border-radius:10px;background:var(--card)">
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;
+                color:var(--muted);font-weight:700;margin-bottom:12px">
+      Líneas que se van a crear
+    </div>
+    <table class="grid tight">
+      <thead><tr>
+        <th>Calibre</th><th>Secado</th>
+        <th class="num">KG PT</th><th class="num">KG MP (con rend.)</th>
+      </tr></thead>
+      <tbody id="preview-tbody"></tbody>
+      <tfoot>
+        <tr style="font-weight:600;border-top:2px solid var(--border)">
+          <td colspan="2" style="text-align:right;padding-right:12px">Total</td>
+          <td class="num" id="preview-total-pt">—</td>
+          <td class="num" id="preview-total-mp">—</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <div class="fld grow" style="margin-top:16px">
     <label>Notas</label>
     <input type="text" name="notes" placeholder="(opcional)">
   </div>
 
   <div class="actions">
-    <button class="btn btn-primary">Crear orden</button>
+    <button class="btn btn-primary" type="submit">Crear orden</button>
     <a class="btn btn-ghost" href="{{ url_for('list_orders') }}">Cancelar</a>
   </div>
 </form>
+
+<script>
+var CALIBER_OPTIONS = {{ CALIBER_OPTIONS | tojson }};
+var YIELD_TABLE     = {{ YIELD_TABLE | tojson }};  // {product_type: {cal_num: rate} or rate}
+
+var DRY_LABELS = { horno:'Horno', cancha:'Sol', termino_secado:'Término secado', '':'Cualquiera' };
+
+function calOpts(selected) {
+  var h = '<option value="">Cualquiera</option>';
+  CALIBER_OPTIONS.forEach(function(c) {
+    h += '<option value="'+c+'"'+(c===selected?' selected':'')+'>'+c+'</option>';
+  });
+  return h;
+}
+
+function dryOpts(selected) {
+  var opts = [['horno','Horno'],['cancha','Sol'],['termino_secado','Término secado']];
+  var h = '<option value="">Cualquiera</option>';
+  opts.forEach(function(o) {
+    h += '<option value="'+o[0]+'"'+(o[0]===selected?' selected':'')+'>'+o[1]+'</option>';
+  });
+  return h;
+}
+
+function rowHtml(nameKey, pctName, optsHtml, pctVal) {
+  return '<div class="mix-row" style="display:flex;gap:8px;align-items:center">'
+    + '<select name="'+nameKey+'" onchange="updatePreview()" style="min-width:140px">'
+    + optsHtml + '</select>'
+    + '<input type="number" name="'+pctName+'" value="'+(pctVal||'')+'"'
+    + ' min="0.1" max="100" step="0.1" placeholder="%" style="width:72px" oninput="updatePreview()">'
+    + '<span style="font-size:12px;color:var(--muted)">%</span>'
+    + '<button type="button" class="mini-btn danger"'
+    + ' onclick="this.closest(\'.mix-row\').remove();updatePreview()">✕</button>'
+    + '</div>';
+}
+
+function addCalRow(cal, pct) {
+  document.getElementById('cal-rows').insertAdjacentHTML(
+    'beforeend', rowHtml('caliber[]','caliber_pct[]', calOpts(cal||''), pct||''));
+  updatePreview();
+}
+
+function addDryRow(dry, pct) {
+  document.getElementById('dry-rows').insertAdjacentHTML(
+    'beforeend', rowHtml('drying[]','drying_pct[]', dryOpts(dry||''), pct||''));
+  updatePreview();
+}
+
+function getPairs(containerSelector, valName, pctName) {
+  var rows = document.querySelectorAll(containerSelector + ' .mix-row');
+  if (rows.length === 0) return [['', 100]];
+  var pairs = [];
+  rows.forEach(function(row) {
+    var val = row.querySelector('select[name="'+valName+'"]').value;
+    var pct = parseFloat(row.querySelector('input[name="'+pctName+'"]').value) || 0;
+    if (pct > 0) pairs.push([val, pct]);
+  });
+  return pairs.length ? pairs : [['', 100]];
+}
+
+function getYieldRate(productType, drying, calStr) {
+  if (!productType || !YIELD_TABLE[productType]) return null;
+  var entry = YIELD_TABLE[productType];
+  if (typeof entry === 'number') return entry;
+  // keyed by cal_num
+  if (calStr && calStr.includes('/')) {
+    var parts = calStr.split('/');
+    var mid = (parseFloat(parts[0]) + parseFloat(parts[1])) / 2;
+    var calNum = Math.round(mid);
+    if (entry[calNum]) return entry[calNum];
+  }
+  return entry['default'] || null;
+}
+
+function updatePreview() {
+  var totalKg = parseFloat(document.getElementById('total-kg').value) || 0;
+  var productType = document.querySelector('select[name="product_type"]').value;
+
+  var calPairs = getPairs('#cal-rows', 'caliber[]', 'caliber_pct[]');
+  var dryPairs = getPairs('#dry-rows', 'drying[]', 'drying_pct[]');
+
+  // Sum indicators
+  var calRows = document.querySelectorAll('#cal-rows .mix-row');
+  var dryRows = document.querySelectorAll('#dry-rows .mix-row');
+
+  if (calRows.length > 0) {
+    var cs = 0; calPairs.forEach(function(p){cs+=p[1];});
+    var el = document.getElementById('cal-sum');
+    el.textContent = 'Total: ' + Math.round(cs*10)/10 + '%';
+    el.style.color = Math.abs(cs-100) < 0.5 ? '#2d6a4f' : '#e74c3c';
+    el.style.fontWeight = '600';
+  } else {
+    document.getElementById('cal-sum').textContent = '';
+  }
+
+  if (dryRows.length > 0) {
+    var ds = 0; dryPairs.forEach(function(p){ds+=p[1];});
+    var el2 = document.getElementById('dry-sum');
+    el2.textContent = 'Total: ' + Math.round(ds*10)/10 + '%';
+    el2.style.color = Math.abs(ds-100) < 0.5 ? '#2d6a4f' : '#e74c3c';
+    el2.style.fontWeight = '600';
+  } else {
+    document.getElementById('dry-sum').textContent = '';
+  }
+
+  if (totalKg <= 0) { document.getElementById('preview-box').style.display='none'; return; }
+
+  var tbody = document.getElementById('preview-tbody');
+  tbody.innerHTML = '';
+  var totalPT = 0, totalMP = 0, anyYield = false;
+
+  calPairs.forEach(function(cp) {
+    dryPairs.forEach(function(dp) {
+      var kg = Math.round(totalKg * (cp[1]/100) * (dp[1]/100) * 10) / 10;
+      totalPT += kg;
+      var yld = getYieldRate(productType, dp[0], cp[0]);
+      var mpKg = yld ? Math.round(kg / yld * 10) / 10 : null;
+      if (mpKg) { totalMP += mpKg; anyYield = true; }
+      var calLabel = cp[0] || 'Cualquiera';
+      var dryLabel = DRY_LABELS[dp[0]] || 'Cualquiera';
+      var mpStr = mpKg ? mpKg.toLocaleString('es-CL',{minimumFractionDigits:1}) : '—';
+      tbody.innerHTML += '<tr>'
+        + '<td>' + calLabel + '</td>'
+        + '<td>' + dryLabel + '</td>'
+        + '<td class="num"><strong>' + kg.toLocaleString('es-CL',{minimumFractionDigits:1}) + '</strong></td>'
+        + '<td class="num" style="color:var(--muted)">' + mpStr + '</td>'
+        + '</tr>';
+    });
+  });
+
+  document.getElementById('preview-total-pt').textContent =
+    totalPT.toLocaleString('es-CL',{minimumFractionDigits:1});
+  document.getElementById('preview-total-mp').textContent =
+    anyYield ? totalMP.toLocaleString('es-CL',{minimumFractionDigits:1}) : '—';
+  document.getElementById('preview-box').style.display = 'block';
+}
+
+function validateForm() {
+  var calRows = document.querySelectorAll('#cal-rows .mix-row');
+  var dryRows = document.querySelectorAll('#dry-rows .mix-row');
+  if (calRows.length > 0) {
+    var s = 0;
+    calRows.forEach(function(r){ s += parseFloat(r.querySelector('input').value)||0; });
+    if (Math.abs(s-100) > 0.5) {
+      alert('Los porcentajes de calibre deben sumar 100%. Ahora suman ' + Math.round(s*10)/10 + '%.');
+      return false;
+    }
+  }
+  if (dryRows.length > 0) {
+    var s2 = 0;
+    dryRows.forEach(function(r){ s2 += parseFloat(r.querySelector('input').value)||0; });
+    if (Math.abs(s2-100) > 0.5) {
+      alert('Los porcentajes de secado deben sumar 100%. Ahora suman ' + Math.round(s2*10)/10 + '%.');
+      return false;
+    }
+  }
+  return true;
+}
+
+// Update preview when product type changes (affects MP kg)
+document.querySelector('select[name="product_type"]').addEventListener('change', updatePreview);
+</script>
 {% endblock %}
