@@ -1129,157 +1129,161 @@ def create_app():
 
     @app.route('/orders/<int:order_id>/download.pdf')
     def download_order_pdf(order_id):
-        from models import Order, DRYING_LABELS as _DL
+        from models import Order
         import io
         from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
                                         Paragraph, Spacer, HRFlowable)
         from reportlab.lib.styles import ParagraphStyle
         from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib.units import cm
 
         order = Order.query.get_or_404(order_id)
 
         PURPLE = colors.HexColor('#3b0764')
         GREEN  = colors.HexColor('#2d6a4f')
-        LTGRAY = colors.HexColor('#f8f8f8')
+        LTGRAY = colors.HexColor('#f4f4f8')
         LAVEND = colors.HexColor('#ede9fe')
+        GRAY   = colors.HexColor('#666666')
 
-        h1    = ParagraphStyle('h1',    fontName='Helvetica-Bold', fontSize=20,
-                               textColor=PURPLE, spaceAfter=2)
-        h2    = ParagraphStyle('h2',    fontName='Helvetica-Bold', fontSize=9,
-                               textColor=colors.white)
-        sub   = ParagraphStyle('sub',   fontName='Helvetica',      fontSize=9,
-                               textColor=colors.HexColor('#666666'), spaceAfter=10)
-        foot  = ParagraphStyle('foot',  fontName='Helvetica',      fontSize=7.5,
-                               textColor=colors.HexColor('#999999'))
-        lstat = ParagraphStyle('lstat', fontName='Helvetica',      fontSize=8.5,
-                               textColor=colors.HexColor('#444444'))
+        # Styles
+        h1     = ParagraphStyle('h1',  fontName='Helvetica-Bold', fontSize=20, textColor=PURPLE, spaceAfter=2)
+        sub_st = ParagraphStyle('sub', fontName='Helvetica',       fontSize=9,  textColor=GRAY, spaceAfter=10)
+        foot   = ParagraphStyle('ft',  fontName='Helvetica',       fontSize=7.5, textColor=colors.HexColor('#999999'))
+        lstat  = ParagraphStyle('ls',  fontName='Helvetica',       fontSize=8.5, textColor=colors.HexColor('#444444'))
+        # Cell styles for table content (Paragraph handles encoding + wrapping)
+        hdr_c  = ParagraphStyle('hc',  fontName='Helvetica-Bold',  fontSize=8,   textColor=colors.white,   leading=10)
+        cell_c = ParagraphStyle('cc',  fontName='Helvetica',       fontSize=8.5, textColor=colors.black,   leading=11)
+        tarja  = ParagraphStyle('tc',  fontName='Helvetica-Bold',  fontSize=8.5, textColor=PURPLE,         leading=11)
+        tot_c  = ParagraphStyle('tot', fontName='Helvetica-Bold',  fontSize=9,   textColor=GREEN,          leading=12)
+        sec_h  = ParagraphStyle('sh',  fontName='Helvetica-Bold',  fontSize=9.5, textColor=colors.white)
 
+        def P(text, st): return Paragraph(str(text or '-'), st)
+
+        # A4 landscape: usable width = 29.7 - 3cm margins = 26.7cm
         buf = io.BytesIO()
-        doc = SimpleDocTemplate(buf, pagesize=A4,
-                                leftMargin=2*cm, rightMargin=2*cm,
-                                topMargin=2*cm, bottomMargin=2*cm)
+        doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                                leftMargin=1.5*cm, rightMargin=1.5*cm,
+                                topMargin=1.5*cm, bottomMargin=1.5*cm)
+        # Column widths (sum = 26.7cm)
+        COL_W = [4*cm, 5*cm, 2.5*cm, 3*cm, 2.5*cm, 1.7*cm, 8*cm]
+
         story = []
 
-        # Header
+        # ── Page header ──
         story.append(Paragraph('GOODVALLEY', h1))
-        title = f'Orden de Venta #{order.id} · {order.customer}'
+        title = f'Orden de Venta #{order.id}  |  {order.customer}'
         if order.reference:
-            title += f' · Ref: {order.reference}'
-        story.append(Paragraph(title, sub))
-        story.append(HRFlowable(width='100%', thickness=1, color=PURPLE, spaceAfter=10))
+            title += f'  |  Ref: {order.reference}'
+        story.append(Paragraph(title, sub_st))
+        story.append(HRFlowable(width='100%', thickness=1, color=PURPLE, spaceAfter=8))
 
-        # Order meta
-        meta_data = [
-            ['Cliente', order.customer or '—', 'Referencia', order.reference or '—'],
-            ['Estado',  order.status_label,    'Fecha',      order.created_at.strftime('%d/%m/%Y')],
+        # Order meta table
+        meta = [
+            [P('Cliente', ParagraphStyle('ml', fontName='Helvetica-Bold', fontSize=9, textColor=PURPLE)),
+             P(order.customer or '-', cell_c),
+             P('Referencia', ParagraphStyle('ml2', fontName='Helvetica-Bold', fontSize=9, textColor=PURPLE)),
+             P(order.reference or '-', cell_c)],
+            [P('Estado',  ParagraphStyle('ml3', fontName='Helvetica-Bold', fontSize=9, textColor=PURPLE)),
+             P(order.status_label, cell_c),
+             P('Fecha',   ParagraphStyle('ml4', fontName='Helvetica-Bold', fontSize=9, textColor=PURPLE)),
+             P(order.created_at.strftime('%d/%m/%Y'), cell_c)],
         ]
-        meta_tbl = Table(meta_data, colWidths=[2.5*cm, 6*cm, 2.5*cm, 6*cm])
+        meta_tbl = Table(meta, colWidths=[2.5*cm, 9*cm, 2.5*cm, 9*cm])
         meta_tbl.setStyle(TableStyle([
-            ('FONTNAME',  (0, 0), (-1, -1), 'Helvetica'),
-            ('FONTNAME',  (0, 0), (0, -1),  'Helvetica-Bold'),
-            ('FONTNAME',  (2, 0), (2, -1),  'Helvetica-Bold'),
-            ('FONTSIZE',  (0, 0), (-1, -1), 9),
-            ('TEXTCOLOR', (0, 0), (0, -1),  PURPLE),
-            ('TEXTCOLOR', (2, 0), (2, -1),  PURPLE),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('TOPPADDING',    (0, 0), (-1, -1), 2),
         ]))
         story.append(meta_tbl)
         story.append(Spacer(1, 0.4*cm))
 
-        # Per-line sections
-        COL_W = [3.5*cm, 2.5*cm, 2*cm, 2.5*cm, 2*cm, 1.5*cm, 3*cm]
+        # ── Per-line sections ──
         for line in order.lines:
             if not line.allocations:
                 continue
 
-            # Section header
-            spec = f'LÍNEA: {line.spec_label}'
-            if line.product_type: spec += f' · {line.product_type_label}'
-            if line.drying:        spec += f' · {_DL.get(line.drying, line.drying)}'
-            hdr_tbl = Table([[Paragraph(spec, h2)]], colWidths=[17*cm])
+            # Section header — spec_label already contains caliber + drying + product_type
+            sec_label = f'LINEA: {line.spec_label}   |   {line.target_kg:,.1f} kg PT pedidos'
+            hdr_tbl = Table([[P(sec_label, sec_h)]], colWidths=[26.7*cm])
             hdr_tbl.setStyle(TableStyle([
                 ('BACKGROUND',    (0, 0), (-1, -1), PURPLE),
-                ('LEFTPADDING',   (0, 0), (-1, -1), 8),
-                ('RIGHTPADDING',  (0, 0), (-1, -1), 8),
-                ('TOPPADDING',    (0, 0), (-1, -1), 6),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('LEFTPADDING',   (0, 0), (-1, -1), 10),
+                ('TOPPADDING',    (0, 0), (-1, -1), 7),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
             ]))
-            story.append(Spacer(1, 0.3*cm))
+            story.append(Spacer(1, 0.35*cm))
             story.append(hdr_tbl)
-            story.append(Spacer(1, 0.2*cm))
+            story.append(Spacer(1, 0.15*cm))
 
-            # Bins table
-            rows = [['TARJA', 'PRODUCTO', 'CALIBRE', 'SECADO', 'KG MP', 'HUM%', 'PRODUCTOR']]
+            # Build rows — all cells are Paragraph objects
+            col_headers = ['TARJA', 'PRODUCTO', 'CALIBRE', 'SECADO', 'KG MP', 'HUM %', 'PRODUCTOR']
+            rows = [[P(h, hdr_c) for h in col_headers]]
             total_kg = 0.0
+
             for a in line.allocations:
                 if a.bin:
                     b = a.bin
                     cal = b.caliber or 'N/A'
                     if b.u_lb and b.u_lb > 0:
-                        cal += f' · {int(b.u_lb)}'
+                        cal += f' / {int(b.u_lb)}'
                     rows.append([
-                        b.bin_identifier or '—',
-                        b.producto or '—',
-                        cal,
-                        b.drying_label or '—',
-                        f'{b.weight_kg:,.1f}' if b.weight_kg else '—',
-                        f'{b.humedad:.1f}' if b.humedad is not None else '—',
-                        b.producer_name or '—',
+                        P(b.bin_identifier, tarja),
+                        P(b.producto, cell_c),
+                        P(cal, cell_c),
+                        P(b.drying_label, cell_c),
+                        P(f'{b.weight_kg:,.1f}' if b.weight_kg else '-', cell_c),
+                        P(f'{b.humedad:.1f}' if b.humedad is not None else '-', cell_c),
+                        P(b.producer_name, cell_c),
                     ])
                     total_kg += b.weight_kg or 0
                 elif a.surplus:
                     s = a.surplus
                     rows.append([
-                        f'Exc. #{s.source_order_id}',
-                        s.producto or '—',
-                        s.caliber or 'N/A',
-                        s.drying_label or '—',
-                        f'{s.weight_kg:,.1f}' if s.weight_kg else '—',
-                        str(s.boxes) if s.boxes is not None else '—',
-                        '—',
+                        P(f'Exc. #{s.source_order_id}', tarja),
+                        P(s.producto, cell_c),
+                        P(s.caliber or 'N/A', cell_c),
+                        P(s.drying_label, cell_c),
+                        P(f'{s.weight_kg:,.1f}' if s.weight_kg else '-', cell_c),
+                        P(str(s.boxes) if s.boxes is not None else '-', cell_c),
+                        P('-', cell_c),
                     ])
                     total_kg += s.weight_kg or 0
 
-            n = len(rows)
-            rows.append(['', '', '', '', f'{total_kg:,.1f} kg', '', ''])
+            n = len(rows)  # includes header row
+            # Total row
+            rows.append([
+                P('', cell_c), P('', cell_c), P('', cell_c), P('', cell_c),
+                P(f'{total_kg:,.1f} kg', tot_c),
+                P('', cell_c), P('', cell_c),
+            ])
 
-            bin_tbl = Table(rows, colWidths=COL_W, repeatRows=1)
             style_cmds = [
-                # Column header row
-                ('BACKGROUND',    (0, 0),  (-1, 0),   GREEN),
-                ('TEXTCOLOR',     (0, 0),  (-1, 0),   colors.white),
-                ('FONTNAME',      (0, 0),  (-1, 0),   'Helvetica-Bold'),
-                ('FONTSIZE',      (0, 0),  (-1, 0),   8),
+                # Header row
+                ('BACKGROUND',    (0, 0),  (-1, 0),      GREEN),
+                ('TOPPADDING',    (0, 0),  (-1, 0),      5),
+                ('BOTTOMPADDING', (0, 0),  (-1, 0),      5),
                 # Data rows
-                ('FONTNAME',      (0, 1),  (-1, n-1), 'Helvetica'),
-                ('FONTSIZE',      (0, 1),  (-1, n-1), 8.5),
-                # Tarja column bold + purple
-                ('FONTNAME',      (0, 1),  (0, n-1),  'Helvetica-Bold'),
-                ('TEXTCOLOR',     (0, 1),  (0, n-1),  PURPLE),
-                # Grid
-                ('GRID',          (0, 0),  (-1, n-1), 0.3, colors.HexColor('#dddddd')),
+                ('TOPPADDING',    (0, 1),  (-1, n),      4),
+                ('BOTTOMPADDING', (0, 1),  (-1, n),      4),
+                # Grid on data
+                ('GRID',          (0, 0),  (-1, n-1),    0.3, colors.HexColor('#dddddd')),
                 # Total row
-                ('FONTNAME',      (0, n),  (-1, n),   'Helvetica-Bold'),
-                ('BACKGROUND',    (0, n),  (-1, n),   LAVEND),
-                ('TEXTCOLOR',     (4, n),  (4, n),    GREEN),
-                ('ALIGN',         (4, n),  (4, n),    'RIGHT'),
-                ('LINEABOVE',     (0, n),  (-1, n),   1, GREEN),
-                # Padding
-                ('TOPPADDING',    (0, 1),  (-1, -1),  4),
-                ('BOTTOMPADDING', (0, 1),  (-1, -1),  4),
-                ('ALIGN',         (4, 0),  (5, -1),   'RIGHT'),
+                ('BACKGROUND',    (0, n),  (-1, n),      LAVEND),
+                ('LINEABOVE',     (0, n),  (-1, n),      1.2, GREEN),
+                ('ALIGN',         (4, 0),  (4, -1),      'RIGHT'),
+                ('ALIGN',         (5, 0),  (5, -1),      'RIGHT'),
             ]
-            # Alternating row tint
+            # Alternating row tint (skip header row 0)
             for i in range(2, n, 2):
                 style_cmds.append(('BACKGROUND', (0, i), (-1, i), LTGRAY))
+
+            bin_tbl = Table(rows, colWidths=COL_W, repeatRows=1)
             bin_tbl.setStyle(TableStyle(style_cmds))
             story.append(bin_tbl)
 
-            story.append(Spacer(1, 0.2*cm))
+            story.append(Spacer(1, 0.15*cm))
             story.append(Paragraph(
-                f'KG PT pedidos: <b>{line.target_kg:,.1f} kg</b> &nbsp;·&nbsp; '
+                f'KG PT pedidos: <b>{line.target_kg:,.1f} kg</b>  |  '
                 f'KG MP asignados: <b>{total_kg:,.1f} kg</b>',
                 lstat
             ))
@@ -1348,11 +1352,8 @@ def create_app():
             if not line.allocations:
                 continue
 
-            # Section header (full-width merged)
-            spec = f'LÍNEA: {line.spec_label}'
-            if line.product_type: spec += f' · {line.product_type_label}'
-            if line.drying:        spec += f' · {_DL.get(line.drying, line.drying)}'
-            spec += f'   —   {line.target_kg:,.1f} kg PT'
+            # Section header — spec_label already contains caliber + drying + product_type
+            spec = f'LÍNEA: {line.spec_label}   —   {line.target_kg:,.1f} kg PT'
             ws.merge_cells(f'A{row}:G{row}')
             ws[f'A{row}'] = spec
             ws[f'A{row}'].font       = Font(bold=True, color='FFFFFFFF', size=10)
