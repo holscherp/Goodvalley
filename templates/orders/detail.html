@@ -75,6 +75,17 @@
   </div>
   <div class="status-actions">
     <span class="badge badge-{{ order.status }} big">{{ order.status_label }}</span>
+    {% set has_allocations = order.lines | selectattr('allocations') | list | length > 0 %}
+    {% if has_allocations and not is_proceso %}
+    <a class="btn" href="{{ url_for('download_order_pdf', order_id=order.id) }}"
+       style="background:#e74c3c;color:#fff;border:none;display:inline-flex;align-items:center;gap:5px">
+      ↓ PDF
+    </a>
+    <a class="btn" href="{{ url_for('download_order_xlsx', order_id=order.id) }}"
+       style="background:#1a5c3a;color:#fff;border:none;display:inline-flex;align-items:center;gap:5px">
+      ↓ Excel
+    </a>
+    {% endif %}
     {% if order.status in ('open', 'confirmed') %}
     <form method="post" action="{{ url_for('update_order_status', order_id=order.id) }}" class="inline">
       {% if order.status == 'open' %}
