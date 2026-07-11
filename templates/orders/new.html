@@ -30,11 +30,10 @@
   {# ── 2. Pedido ── #}
   <div class="card" style="padding:20px 24px;margin-bottom:16px">
     <div class="step-label">2 · Pedido</div>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:14px">
       <div class="fld">
-        <label>Tipo de proceso</label>
-        <select name="product_type" id="sel-tipo">
-          <option value="">Sin especificar</option>
+        <label>Tipo de proceso *</label>
+        <select name="product_type" id="sel-tipo" required>
           <option value="tsc">TSC</option>
           <option value="ss">SS</option>
           <option value="tcc">TCC</option>
@@ -43,9 +42,7 @@
         </select>
       </div>
       <div class="fld">
-        <label>Calibre del cliente *
-          <span style="font-size:10px;color:var(--muted);font-weight:400;margin-left:4px">qué pidió el comprador</span>
-        </label>
+        <label>Calibre *</label>
         <select id="customer-caliber" required>
           <option value="">— seleccioná —</option>
           {% for c in CALIBER_OPTIONS %}
@@ -63,15 +60,15 @@
           <option value="base">Base</option>
         </select>
       </div>
-      <div class="fld" style="width:90px">
+      <div class="fld">
         <label>Temporada</label>
         <input type="text" name="temporada" placeholder="—">
       </div>
-      <div class="fld" style="width:90px">
+      <div class="fld">
         <label>Hum. máx %</label>
         <input type="number" step="0.1" name="max_humedad" placeholder="—">
       </div>
-      <div class="fld" style="width:120px">
+      <div class="fld">
         <label>KG totales (PT) *</label>
         <input type="number" step="0.1" name="target_kg" id="total-kg" required
                placeholder="ej. 1000" oninput="updatePreview()">
@@ -83,11 +80,7 @@
   </div>
 
   {# ── Calibre-change warning ── #}
-  <div id="cal-change-warning"
-       style="display:none;margin-bottom:12px;padding:10px 16px;
-              background:#fffbeb;border:1px solid #f59e0b;border-radius:8px;
-              font-size:13px;color:#92400e;font-weight:500;display:flex;
-              justify-content:space-between;align-items:center">
+  <div id="cal-change-warning">
     <span>⚠ El calibre del cliente cambió — revisá los porcentajes asignados.</span>
     <button type="button"
             onclick="this.parentNode.style.display='none'"
@@ -98,9 +91,9 @@
   <div class="card" style="padding:20px 24px;margin-bottom:16px">
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
       <div>
-        <div class="step-label" style="margin-bottom:2px">3 · ¿Cómo querés armar este pedido?</div>
+        <div class="step-label" style="margin-bottom:2px">3 · Distribución por calibre</div>
         <div style="font-size:12px;color:var(--muted)">
-          Asigná el porcentaje de bins de cada calibre. Deben sumar 100%.
+          Asigná el porcentaje de cada calibre. Deben sumar 100%.
         </div>
       </div>
       <span id="cal-sum" style="font-size:13px;font-weight:700;white-space:nowrap;margin-left:16px"></span>
@@ -173,6 +166,20 @@
   color: var(--purple);
   font-weight: 700;
 }
+/* Calibre-change warning */
+#cal-change-warning {
+  display: none;
+  margin-bottom: 12px;
+  padding: 10px 16px;
+  background: #fffbeb;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #92400e;
+  font-weight: 500;
+  justify-content: space-between;
+  align-items: center;
+}
 /* Fixed allocation row */
 .fixed-row {
   display: flex;
@@ -182,16 +189,18 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px 14px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 .fixed-row .row-label {
   font-size: 14px;
   font-weight: 700;
-  min-width: 86px;
+  width: 114px;
+  flex-shrink: 0;
   color: var(--fg);
 }
 .fixed-row .pct-input {
   width: 60px;
+  flex-shrink: 0;
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 5px 8px;
@@ -206,15 +215,17 @@
   color: var(--muted);
   font-weight: 600;
   margin-right: 6px;
+  flex-shrink: 0;
 }
 /* Quick-select button strip */
 .qbtns-wrap {
   display: flex;
   gap: 4px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 .qbtn {
-  padding: 4px 7px;
+  width: 36px;
+  padding: 4px 0;
   border-radius: 5px;
   border: none;
   font-size: 11px;
@@ -224,6 +235,8 @@
   color: #fff;
   transition: opacity .1s;
   line-height: 1.3;
+  text-align: center;
+  flex-shrink: 0;
 }
 .qbtn:hover:not([disabled]) { opacity: .8; }
 .qbtn[disabled] {
