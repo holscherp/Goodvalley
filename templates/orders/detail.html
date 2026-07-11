@@ -269,7 +269,13 @@
         </div>
 
         {% if search_bins %}
-        <p class="muted" style="margin:8px 0 4px"><strong>Bins disponibles</strong></p>
+        {% set saldo_bins = search_bins | selectattr('bin_identifier', 'in', saldo_tarjas) | list %}
+        <p class="muted" style="margin:8px 0 4px">
+          <strong>Bins disponibles</strong>
+          {% if saldo_bins %}
+            · <span style="color:#2d6a4f;font-weight:600">{{ saldo_bins | length }} en saldo</span>
+          {% endif %}
+        </p>
         <table class="grid tight selectable">
           <thead><tr>
             <th><input type="checkbox" id="chk-all-{{ line.id }}"
@@ -279,10 +285,14 @@
           </tr></thead>
           <tbody>
           {% for b in search_bins %}
-            <tr onclick="this.querySelector('input[type=checkbox]').click()">
+            {% set is_saldo = b.bin_identifier in saldo_tarjas %}
+            <tr class="{{ 'saldo-row' if is_saldo }}" onclick="this.querySelector('input[type=checkbox]').click()">
               <td><input type="checkbox" class="chk-{{ line.id }}" name="bin_ids" value="{{ b.id }}"
                          data-kg="{{ b.weight_kg }}" onchange="updateSel{{ line.id }}()"></td>
-              <td class="mono">{{ b.bin_identifier }}</td>
+              <td class="mono">
+                {{ b.bin_identifier }}
+                {% if is_saldo %}<span class="pill pill-saldo">Saldo</span>{% endif %}
+              </td>
               <td>{{ b.producto or '—' }}</td>
               <td>{{ b.caliber or 'N/A' }}{% if b.u_lb and b.u_lb > 0 %} · {{ b.u_lb | int }}{% endif %}</td>
               <td><span class="pill pill-{{ b.drying }}">{{ b.drying_label }}</span></td>
@@ -291,6 +301,9 @@
               <td>{{ b.producer_name }}</td>
               <td>{{ b.temporada or '—' }}</td>
             </tr>
+            {% if is_saldo and not loop.last and search_bins[loop.index].bin_identifier not in saldo_tarjas %}
+            <tr class="saldo-divider"><td colspan="9"></td></tr>
+            {% endif %}
           {% endfor %}
           </tbody>
         </table>

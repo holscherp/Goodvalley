@@ -1046,6 +1046,7 @@ def create_app():
         search_line_id = request.args.get('search_line', type=int)
         search_bins = []
         search_excedentes = []
+        saldo_tarjas = set()
         if search_line_id and order.status in ('open', 'confirmed'):
             line = next((l for l in order.lines if l.id == search_line_id), None)
             if line:
@@ -1072,6 +1073,32 @@ def create_app():
                     q = q.filter(Bin.id.notin_(allocated_bin_ids))
                 search_bins = q.order_by(Bin.bin_identifier).limit(200).all()
 
+                # Compute saldo tarjas so they can be sorted to the top
+                from models import HistoricoMovimiento, WASTE_SERIES as _WS
+                _prod = (HistoricoMovimiento.query
+                    .filter(HistoricoMovimiento.movimiento == 'INGRESO DESDE PROCESO')
+                    .filter(~db.or_(
+                        HistoricoMovimiento.serie.in_(_WS),
+                        HistoricoMovimiento.serie.ilike('%DESCARTE%')
+                    ))
+                    .all())
+                _cons = (HistoricoMovimiento.query
+                    .filter(HistoricoMovimiento.movimiento.in_([
+                        'EMBARQUE', 'EGRESO A REPALETIZAJE', 'EGRESO REEMBALAJE'
+                    ]))
+                    .all())
+                _cons_t, _shipped_ots = set(), set()
+                for _r in _cons:
+                    if _r.tarja: _cons_t.add(_r.tarja.strip())
+                    if _r.movimiento == 'EMBARQUE': _shipped_ots.add(_r.ot)
+                for _r in _prod:
+                    _t = (_r.tarja or '').strip()
+                    if _t and _r.ot in _shipped_ots and _t not in _cons_t:
+                        saldo_tarjas.add(_t)
+                search_bins.sort(
+                    key=lambda b: (0 if b.bin_identifier in saldo_tarjas else 1, b.bin_identifier)
+                )
+
                 allocated_surplus_ids = {
                     a.surplus_id for a in
                     Allocation.query.filter(Allocation.surplus_id.isnot(None)).all()
@@ -1093,6 +1120,7 @@ def create_app():
             search_excedentes=search_excedentes,
             search_line_id=search_line_id,
             u_lb_f=u_lb_f if search_line_id else None,
+            saldo_tarjas=saldo_tarjas,
             CALIBER_OPTIONS=CALIBER_OPTIONS,
             DRYING_LABELS=DRYING_LABELS,
         )
