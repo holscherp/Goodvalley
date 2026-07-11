@@ -1129,7 +1129,7 @@ def create_app():
 
     @app.route('/orders/<int:order_id>/download.pdf')
     def download_order_pdf(order_id):
-        from models import Order
+        from models import Order, DRYING_LABELS as _DL
         import io
         from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
                                         Paragraph, Spacer, HRFlowable)
@@ -1197,7 +1197,7 @@ def create_app():
             # Section header
             spec = f'LÍNEA: {line.spec_label}'
             if line.product_type: spec += f' · {line.product_type_label}'
-            if line.drying:        spec += f' · {line.drying_label}'
+            if line.drying:        spec += f' · {_DL.get(line.drying, line.drying)}'
             hdr_tbl = Table([[Paragraph(spec, h2)]], colWidths=[17*cm])
             hdr_tbl.setStyle(TableStyle([
                 ('BACKGROUND',    (0, 0), (-1, -1), PURPLE),
@@ -1301,7 +1301,7 @@ def create_app():
 
     @app.route('/orders/<int:order_id>/download.xlsx')
     def download_order_xlsx(order_id):
-        from models import Order
+        from models import Order, DRYING_LABELS as _DL
         import io
         import openpyxl
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -1351,7 +1351,7 @@ def create_app():
             # Section header (full-width merged)
             spec = f'LÍNEA: {line.spec_label}'
             if line.product_type: spec += f' · {line.product_type_label}'
-            if line.drying:        spec += f' · {line.drying_label}'
+            if line.drying:        spec += f' · {_DL.get(line.drying, line.drying)}'
             spec += f'   —   {line.target_kg:,.1f} kg PT'
             ws.merge_cells(f'A{row}:G{row}')
             ws[f'A{row}'] = spec
