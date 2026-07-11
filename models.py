@@ -192,6 +192,7 @@ class Order(db.Model):
     __tablename__ = 'orders'
 
     id         = db.Column(db.Integer, primary_key=True)
+    ot         = db.Column(db.String(20),  nullable=True, unique=True)
     customer   = db.Column(db.String(200), nullable=False)
     reference  = db.Column(db.String(100), nullable=True)
     status     = db.Column(db.String(20),  default='open')

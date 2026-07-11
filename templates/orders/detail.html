@@ -61,14 +61,14 @@
   <div>
     <a class="back" href="{{ url_for('list_orders') }}">← Órdenes</a>
     <h1>
-      {% if is_proceso %}OT {{ order.customer }}{% else %}Orden #{{ order.id }} · {{ order.customer }}{% endif %}
+      {% if is_proceso %}OT {{ order.customer }}{% else %}{{ order.ot or ('#' + order.id|string) }} · {{ order.customer }}{% endif %}
     </h1>
     <p class="muted">
       {% if is_proceso %}
         {% if order.reference %}IDOT {{ order.reference }} · {% endif %}
         Informe Procesos · importado {{ order.created_at.strftime('%d-%m-%Y') }}
       {% else %}
-        {% if order.reference %}{{ order.reference }} · {% endif %}
+        {% if order.reference %}PO: {{ order.reference }} · {% endif %}
         creada {{ order.created_at.strftime('%d-%m-%Y') }}
       {% endif %}
     </p>

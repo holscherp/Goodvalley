@@ -995,7 +995,13 @@ def create_app():
         if not dry_pairs:
             dry_pairs = [(None, 100.0)]
 
-        order = Order(customer=customer, reference=reference, notes=notes)
+        # Auto-generate OT: YYMMDD-N (same format as pWarehouse historico)
+        from datetime import date as _date
+        today_prefix = _date.today().strftime('%y%m%d')
+        existing_today = Order.query.filter(Order.ot.like(f'{today_prefix}-%')).count()
+        ot = f'{today_prefix}-{existing_today + 1}'
+
+        order = Order(customer=customer, reference=reference, notes=notes, ot=ot)
         db.session.add(order)
         db.session.flush()
 
@@ -1016,7 +1022,7 @@ def create_app():
 
         db.session.commit()
         n_lines = len(cal_pairs) * len(dry_pairs)
-        flash(f'Orden #{order.id} creada con {n_lines} línea{"s" if n_lines != 1 else ""}.', 'ok')
+        flash(f'Orden {order.ot} creada con {n_lines} línea{"s" if n_lines != 1 else ""}.', 'ok')
         return redirect(url_for('order_detail', order_id=order.id))
 
     @app.route('/orders/new')
@@ -1172,9 +1178,10 @@ def create_app():
 
         # ── Page header ──
         story.append(Paragraph('GOODVALLEY', h1))
-        title = f'Orden de Venta #{order.id}  |  {order.customer}'
+        ot_label = order.ot or f'#{order.id}'
+        title = f'OT {ot_label}  |  {order.customer}'
         if order.reference:
-            title += f'  |  Ref: {order.reference}'
+            title += f'  |  PO: {order.reference}'
         story.append(Paragraph(title, sub_st))
         story.append(HRFlowable(width='100%', thickness=1, color=PURPLE, spaceAfter=8))
 
@@ -1296,8 +1303,9 @@ def create_app():
         doc.build(story)
         buf.seek(0)
         safe_name = (order.customer or 'cliente').replace(' ', '_')
+        ot_file = (order.ot or str(order.id)).replace('/', '-')
         return send_file(buf,
-                         download_name=f'orden_{order.id}_{safe_name}.pdf',
+                         download_name=f'orden_{ot_file}_{safe_name}.pdf',
                          as_attachment=True,
                          mimetype='application/pdf')
 
@@ -1454,9 +1462,10 @@ def create_app():
         wb.save(buf)
         buf.seek(0)
         safe_name = (order.customer or 'cliente').replace(' ', '_')
+        ot_file = (order.ot or str(order.id)).replace('/', '-')
         return send_file(
             buf,
-            download_name=f'orden_{order.id}_{safe_name}.xlsx',
+            download_name=f'orden_{ot_file}_{safe_name}.xlsx',
             as_attachment=True,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
@@ -2643,6 +2652,8 @@ def _migrate(db_obj):
         'ALTER TABLE excedentes ADD COLUMN IF NOT EXISTS source_bin_tarja VARCHAR(50)',
         # fruit quality tier on order lines
         'ALTER TABLE order_lines ADD COLUMN IF NOT EXISTS fruit_quality VARCHAR(20)',
+        # orders — auto-generated OT number (YYMMDD-N)
+        'ALTER TABLE orders ADD COLUMN IF NOT EXISTS ot VARCHAR(20)',
         # warehouse location columns on historico_movimientos (added 2026-07)
         'ALTER TABLE historico_movimientos ADD COLUMN IF NOT EXISTS x VARCHAR(10)',
         'ALTER TABLE historico_movimientos ADD COLUMN IF NOT EXISTS y FLOAT',

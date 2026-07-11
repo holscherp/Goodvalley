@@ -10,15 +10,16 @@
 {% if orders %}
 <table class="grid">
   <thead><tr>
-    <th>Ref.</th><th>Líneas</th>
+    <th>OT</th><th>Cliente</th><th>Ref. PO</th>
     <th class="num">kg pedidos</th><th class="num">kg asignados</th>
     <th>Estado</th><th></th>
   </tr></thead>
   <tbody>
   {% for o in orders %}
     <tr>
+      <td class="mono" style="font-weight:700;color:var(--purple)">{{ o.ot or '—' }}</td>
+      <td>{{ o.customer }}</td>
       <td>{{ o.reference or '—' }}</td>
-      <td>{{ o.lines | list | length }}</td>
       <td class="num">{{ "{:,.1f}".format(o.target_kg) }}</td>
       <td class="num">{{ "{:,.1f}".format(o.allocated_kg) }}</td>
       <td><span class="badge badge-{{ o.status }}">{{ o.status_label }}</span></td>
