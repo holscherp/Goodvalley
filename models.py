@@ -102,10 +102,10 @@ PRODUCT_TYPE_LABELS = {
 }
 
 FRUIT_QUALITY_LABELS = {
-    'deluxe':   'Deluxe',
-    'premium':  'Premium',
-    'estandar': 'Estándar',
-    'base':     'Base',
+    'deluxe':   'A',
+    'premium':  'B',
+    'estandar': 'C',
+    'base':     'D',
 }
 
 BIN_STATUS_LABELS = {
