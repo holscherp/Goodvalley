@@ -16,6 +16,13 @@
 
 <h1 style="font-size:1.6rem;margin-bottom:6px">OT {{ base_ot }}</h1>
 
+{% if not sub_ords %}
+<div class="empty" style="margin-top:32px">
+  <p style="font-size:15px;margin-bottom:8px">No hay embarques registrados para OT <strong>{{ base_ot }}</strong>.</p>
+  <p class="muted" style="font-size:13px">Esta OT puede estar aún en proceso o los embarques no han sido importados en el histórico.</p>
+</div>
+{% else %}
+
 {# ── Sub-OT tab selector ── #}
 {% if sub_ords|length > 1 %}
 <div style="display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap">
@@ -158,4 +165,6 @@ function switchTab(ot) {
 }
 </script>
 {% endif %}
+
+{% endif %}{# end sub_ords check #}
 {% endblock %}

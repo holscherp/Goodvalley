@@ -2064,8 +2064,6 @@ def create_app():
 
         all_ords = OrdenDeVenta.query.order_by(OrdenDeVenta.ot).all()
         sub_ords = [o for o in all_ords if _ot_base(o.ot) == base]
-        if not sub_ords:
-            abort(404)
 
         embarques_by_ot = {}
         for o in sub_ords:
