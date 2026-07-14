@@ -1082,7 +1082,9 @@ def create_app():
                 # Compute saldo tarjas so they can be sorted to the top
                 from models import HistoricoMovimiento, WASTE_SERIES as _WS
                 _prod = (HistoricoMovimiento.query
-                    .filter(HistoricoMovimiento.movimiento == 'INGRESO DESDE PROCESO')
+                    .filter(HistoricoMovimiento.movimiento.in_([
+                        'INGRESO DESDE PROCESO', 'REPALETIZAJE', 'INGRESO REEMBALAJE'
+                    ]))
                     .filter(~db.or_(
                         HistoricoMovimiento.serie.in_(_WS),
                         HistoricoMovimiento.serie.ilike('%DESCARTE%')
@@ -2112,9 +2114,13 @@ def create_app():
         from models import HistoricoMovimiento, WASTE_SERIES
         from collections import OrderedDict as _OD
 
-        # All non-waste tarjas that came out of processing
+        # All non-waste tarjas that came out of processing.
+        # REPALETIZAJE and INGRESO REEMBALAJE are output tarjas from repackaging —
+        # their originals were already consumed via EGRESO A REPALETIZAJE / EGRESO REEMBALAJE.
         produced = (HistoricoMovimiento.query
-                    .filter(HistoricoMovimiento.movimiento == 'INGRESO DESDE PROCESO')
+                    .filter(HistoricoMovimiento.movimiento.in_([
+                        'INGRESO DESDE PROCESO', 'REPALETIZAJE', 'INGRESO REEMBALAJE'
+                    ]))
                     .filter(
                         ~db.or_(
                             HistoricoMovimiento.serie.in_(WASTE_SERIES),
