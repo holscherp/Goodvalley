@@ -74,7 +74,7 @@
 {% if bins %}
 <table class="grid">
   <thead><tr>
-    <th>Tarja</th><th>Producto</th><th>Calibre</th><th>Secado</th>
+    <th>Tarja</th><th>Producto</th><th>Calibre</th><th>Serie</th><th>Secado</th>
     <th class="num">kg</th><th class="num">Hum %</th>
     <th>Productor</th><th>Temp.</th><th>Estado</th>
   </tr></thead>
@@ -83,7 +83,8 @@
     <tr class="st-{{ b.status }}">
       <td class="mono">{{ b.bin_identifier }}</td>
       <td>{{ b.producto or '—' }}</td>
-      <td>{{ b.caliber or 'N/A' }}{% if b.u_lb and b.u_lb > 0 %} · {{ b.u_lb | int }}{% endif %}</td>
+      <td>{{ b.caliber or '—' }}</td>
+      <td class="mono">{{ b.u_lb | int if b.u_lb and b.u_lb > 0 else '—' }}</td>
       <td>
         {% if b.drying %}
           <span class="pill pill-{{ b.drying }}">{{ b.drying_label }}</span>

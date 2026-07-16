@@ -110,7 +110,8 @@
     <thead><tr>
       <th>Fecha</th>
       <th>Tarja</th>
-      <th>Calibre / Serie</th>
+      <th>Calibre</th>
+      <th>Serie</th>
       <th>Producto</th>
       <th>Cliente</th>
       <th>Contenedor</th>
@@ -123,7 +124,8 @@
     <tr>
       <td class="mono" style="font-size:12px">{{ m.fecha_str or '—' }}</td>
       <td class="mono" style="font-size:12px">{{ m.tarja or '—' }}</td>
-      <td class="mono">{{ m.serie or '—' }}{% if m.u_lb and m.u_lb > 0 %} · {{ m.u_lb | int }}{% endif %}</td>
+      <td class="mono">{{ m.serie or '—' }}</td>
+      <td class="mono">{{ m.u_lb | int if m.u_lb and m.u_lb > 0 else '—' }}</td>
       <td style="font-size:12px">{{ m.producto or '—' }}</td>
       <td style="font-size:12px">{{ m.cliente or '—' }}</td>
       <td style="font-size:12px">{{ m.contenedor or '—' }}</td>
