@@ -1586,6 +1586,26 @@ def create_app():
         flash('Reset completo — bins, órdenes y asignaciones eliminados.', 'ok')
         return redirect(url_for('index'))
 
+    @app.route('/reset-historico', methods=['POST'])
+    def reset_historico():
+        from models import HistoricoMovimiento, Proceso, OrdenDeVenta, AppSetting
+
+        if request.form.get('passcode') != '001083748':
+            flash('Código incorrecto.', 'err')
+            return redirect(url_for('list_procesos'))
+
+        HistoricoMovimiento.query.delete(synchronize_session=False)
+        Proceso.query.delete(synchronize_session=False)
+        OrdenDeVenta.query.delete(synchronize_session=False)
+        # Clear GDrive last-import marker so next trigger re-imports from scratch
+        for key in ('gdrive_last_file_id', 'gdrive_last_file_name', 'gdrive_last_imported_at'):
+            s = db.session.get(AppSetting, key)
+            if s:
+                db.session.delete(s)
+        db.session.commit()
+        flash('Reset completo — procesos, embarques, descartes y saldos eliminados.', 'ok')
+        return redirect(url_for('list_procesos'))
+
     @app.route('/orders/<int:order_id>/delete', methods=['POST'])
     def delete_order(order_id):
         from models import Order, Excedente
@@ -2633,15 +2653,22 @@ def _gdrive_check_and_import(app, force=False):
 
     with app.app_context():
         from sqlalchemy import text as _text
-        # Non-blocking advisory lock — if another worker is already importing, skip
-        got_lock = db.session.execute(_text('SELECT pg_try_advisory_lock(7654321)')).scalar()
-        if not got_lock:
-            return False, ''
-        try:
-            return _do_gdrive_import(folder_id, sa_json, force)
-        finally:
-            db.session.execute(_text('SELECT pg_advisory_unlock(7654321)'))
-            db.session.remove()
+        # Use a dedicated connection for the advisory lock so it stays clean
+        # even if the import session hits an error and aborts its transaction.
+        with db.engine.connect() as lock_conn:
+            got_lock = lock_conn.execute(_text('SELECT pg_try_advisory_lock(7654321)')).scalar()
+            lock_conn.commit()
+            if not got_lock:
+                return False, ''
+            try:
+                return _do_gdrive_import(folder_id, sa_json, force)
+            except Exception:
+                db.session.rollback()
+                raise
+            finally:
+                lock_conn.execute(_text('SELECT pg_advisory_unlock(7654321)'))
+                lock_conn.commit()
+                db.session.remove()
 
 
 def _do_gdrive_import(folder_id, sa_json, force=False):
