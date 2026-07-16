@@ -87,24 +87,54 @@
             style="background:none;border:none;cursor:pointer;color:#92400e;font-size:18px;line-height:1;padding:0 0 0 12px">×</button>
   </div>
 
-  {# ── 3. Calibres ── #}
+  {# ── 3. Distribución ── #}
   <div class="card" style="padding:20px 24px;margin-bottom:16px">
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
-      <div>
-        <div class="step-label" style="margin-bottom:2px">3 · Distribución por calibre</div>
-        <div style="font-size:12px;color:var(--muted)">
-          Asigná el porcentaje de cada calibre. Deben sumar 100%.
-        </div>
-      </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="step-label">3 · Distribución</div>
       <span id="cal-sum" style="font-size:13px;font-weight:700;white-space:nowrap;margin-left:16px"></span>
     </div>
 
-    <div id="cal-placeholder"
-         style="padding:22px;text-align:center;color:var(--muted);font-size:13px;
-                border:1.5px dashed var(--border);border-radius:8px;margin-top:12px">
-      Seleccioná el calibre del cliente en el paso 2 para ver las opciones.
+    {# Tab bar #}
+    <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px">
+      <button type="button" id="tab-calibre" onclick="switchDistTab('calibre')"
+              style="padding:7px 18px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+                     border:none;background:none;cursor:pointer;color:var(--purple);
+                     border-bottom:2px solid var(--purple);margin-bottom:-2px">
+        Por calibre
+      </button>
+      <button type="button" id="tab-serie" onclick="switchDistTab('serie')"
+              style="padding:7px 18px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+                     border:none;background:none;cursor:pointer;color:var(--muted);
+                     border-bottom:2px solid transparent;margin-bottom:-2px">
+        Por serie
+      </button>
     </div>
-    <div id="cal-rows" style="display:flex;flex-direction:column;gap:8px;margin-top:12px"></div>
+
+    {# Panel: Por calibre #}
+    <div id="panel-calibre">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+        Asigná el porcentaje de cada calibre. Deben sumar 100%.
+      </div>
+      <div id="cal-placeholder"
+           style="padding:22px;text-align:center;color:var(--muted);font-size:13px;
+                  border:1.5px dashed var(--border);border-radius:8px">
+        Seleccioná el calibre del cliente en el paso 2 para ver las opciones.
+      </div>
+      <div id="cal-rows" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
+
+    {# Panel: Por serie #}
+    <div id="panel-serie" style="display:none">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px">
+        Ajustá los rangos de serie y asigná el porcentaje de cada uno. Deben sumar 100%.
+      </div>
+      <div id="serie-placeholder"
+           style="padding:22px;text-align:center;color:var(--muted);font-size:13px;
+                  border:1.5px dashed var(--border);border-radius:8px">
+        Seleccioná el calibre del cliente en el paso 2 para ver las opciones.
+      </div>
+      <div id="serie-rows" style="display:flex;flex-direction:column;gap:8px"></div>
+    </div>
   </div>
 
   {# ── 4. Secado ── #}
@@ -250,11 +280,41 @@
   outline: 2px solid #2d6a4f;
   outline-offset: 1px;
 }
+/* Spinner controls for serie rows */
+.spin-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.spin-btn {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--card);
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.spin-btn:hover { background: var(--lavender); }
+.spin-num {
+  min-width: 34px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--fg);
+}
 </style>
 
 <script>
 var CALIBER_OPTIONS = {{ CALIBER_OPTIONS | tojson }};
 var YIELD_TABLE     = {{ YIELD_TABLE | tojson }};
+var activeDistTab   = 'calibre';
 
 var DRY_ROWS = [
   { val: 'horno',          label: 'Horno' },
@@ -263,6 +323,79 @@ var DRY_ROWS = [
 ];
 var DRY_LABELS = { horno: 'Horno', cancha: 'Sol', termino_secado: 'Término secado' };
 var PCT_BTNS   = [10, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100];
+
+// ── Tab switching ──────────────────────────────────────────────────────────
+
+function switchDistTab(tab) {
+  activeDistTab = tab;
+  ['calibre', 'serie'].forEach(function(t) {
+    var btn   = document.getElementById('tab-' + t);
+    var panel = document.getElementById('panel-' + t);
+    var act   = (t === tab);
+    btn.style.color             = act ? 'var(--purple)' : 'var(--muted)';
+    btn.style.borderBottomColor = act ? 'var(--purple)' : 'transparent';
+    panel.style.display         = act ? '' : 'none';
+  });
+  updateBudget(tab === 'calibre' ? 'cal' : 'serie');
+}
+
+// ── Spinners for serie rows ────────────────────────────────────────────────
+
+function spinAdj(btn, delta) {
+  var numEl = btn.parentElement.querySelector('.spin-num');
+  numEl.textContent = parseInt(numEl.textContent) + delta;
+}
+
+function buildSerieRow(lo, hi, pctVal) {
+  var div = document.createElement('div');
+  div.className = 'fixed-row';
+  div.dataset.section = 'serie';
+
+  var btnsHtml = PCT_BTNS.map(function(v) {
+    return '<button type="button" class="qbtn" data-val="' + v
+      + '" onclick="setQuick(this)">' + v + '</button>';
+  }).join('');
+
+  div.innerHTML =
+    '<div class="spin-group">'
+      + '<button type="button" class="spin-btn" onclick="spinAdj(this,-10)">▼</button>'
+      + '<span class="spin-num" data-field="lo">' + lo + '</span>'
+      + '<button type="button" class="spin-btn" onclick="spinAdj(this,10)">▲</button>'
+    + '</div>'
+    + '<span style="font-size:13px;color:var(--muted);font-weight:600;padding:0 6px">a</span>'
+    + '<div class="spin-group">'
+      + '<button type="button" class="spin-btn" onclick="spinAdj(this,-10)">▼</button>'
+      + '<span class="spin-num" data-field="hi">' + hi + '</span>'
+      + '<button type="button" class="spin-btn" onclick="spinAdj(this,10)">▲</button>'
+    + '</div>'
+    + '<input class="pct-input" type="number" placeholder="0"'
+      + ' value="' + (pctVal || '') + '" min="0" max="100" step="0.1"'
+      + ' oninput="onPctInputEl(this)" style="margin-left:10px">'
+    + '<span class="pct-sym">%</span>'
+    + '<div class="qbtns-wrap">' + btnsHtml + '</div>';
+
+  return div;
+}
+
+function renderSerieRows(caliberStr) {
+  var container   = document.getElementById('serie-rows');
+  var placeholder = document.getElementById('serie-placeholder');
+  container.innerHTML = '';
+
+  if (!caliberStr) { placeholder.style.display = 'block'; return; }
+
+  var parts = caliberStr.split('/');
+  if (parts.length !== 2) { placeholder.style.display = 'block'; return; }
+  var lo   = parseInt(parts[0]);
+  var hi   = parseInt(parts[1]);
+  var step = hi - lo;
+
+  [[lo - step, lo], [lo, hi], [hi, hi + step], [hi + step, hi + 2 * step]].forEach(function(r) {
+    container.appendChild(buildSerieRow(r[0], r[1], ''));
+  });
+  placeholder.style.display = 'none';
+  updateBudget('serie');
+}
 
 // ── Calibre selection: returns ordered list biggest → smallest ─────────────
 
@@ -370,8 +503,8 @@ function updateBudget(sectionId) {
     });
   });
 
-  // Update running total indicator
-  var sumEl = document.getElementById(sectionId + '-sum');
+  // Update running total indicator ('serie' shares the #cal-sum display)
+  var sumEl = document.getElementById((sectionId === 'serie' ? 'cal' : sectionId) + '-sum');
   if (!rows.length) { sumEl.textContent = ''; return; }
   var ok = Math.abs(totalPct - 100) < 0.5;
   sumEl.textContent = totalPct + '% / 100%';
@@ -399,6 +532,8 @@ function onCustomerCaliberChange() {
   if (!sel) {
     document.getElementById('cal-rows').innerHTML = '';
     document.getElementById('cal-placeholder').style.display = 'block';
+    document.getElementById('serie-rows').innerHTML = '';
+    document.getElementById('serie-placeholder').style.display = 'block';
     document.getElementById('cal-sum').textContent = '';
     updatePreview();
     return;
@@ -414,6 +549,7 @@ function onCustomerCaliberChange() {
   }
 
   renderCalRows(getCalibersForSelection(sel));
+  renderSerieRows(sel);
 }
 
 // ── Preview ────────────────────────────────────────────────────────────────
@@ -483,11 +619,41 @@ function validateForm() {
     alert('Seleccioná el calibre del cliente en el paso 2 antes de crear la orden.');
     return false;
   }
-  var cs = getSectionSum('cal');
-  if (Math.abs(cs - 100) > 0.5) {
-    alert('Los % de calibre deben sumar 100%. Ahora suman ' + cs + '%.');
-    return false;
+
+  if (activeDistTab === 'serie') {
+    var ss = getSectionSum('serie');
+    if (Math.abs(ss - 100) > 0.5) {
+      alert('Los % de serie deben sumar 100%. Ahora suman ' + ss + '%.');
+      return false;
+    }
+    // Disable calibre panel inputs so they don't get submitted
+    document.querySelectorAll('#panel-calibre input').forEach(function(el) { el.disabled = true; });
+    // Clean up any previous injection, then inject serie hidden inputs
+    document.querySelectorAll('.injected-serie').forEach(function(el) { el.remove(); });
+    var form = document.getElementById('order-form');
+    document.querySelectorAll('#serie-rows .fixed-row').forEach(function(row) {
+      var lo  = row.querySelector('[data-field="lo"]').textContent;
+      var hi  = row.querySelector('[data-field="hi"]').textContent;
+      var pct = parseFloat(row.querySelector('.pct-input').value) || 0;
+      if (pct > 0) {
+        var ci = document.createElement('input');
+        ci.type = 'hidden'; ci.name = 'caliber[]';
+        ci.value = lo + '-' + hi; ci.className = 'injected-serie';
+        form.appendChild(ci);
+        var pi = document.createElement('input');
+        pi.type = 'hidden'; pi.name = 'caliber_pct[]';
+        pi.value = pct; pi.className = 'injected-serie';
+        form.appendChild(pi);
+      }
+    });
+  } else {
+    var cs = getSectionSum('cal');
+    if (Math.abs(cs - 100) > 0.5) {
+      alert('Los % de calibre deben sumar 100%. Ahora suman ' + cs + '%.');
+      return false;
+    }
   }
+
   var ds = getSectionSum('dry');
   if (Math.abs(ds - 100) > 0.5) {
     alert('Los % de secado deben sumar 100%. Ahora suman ' + ds + '%.');
