@@ -606,3 +606,10 @@ class Pallet(db.Model):
     @property
     def product_type_label(self):
         return PRODUCT_TYPE_LABELS.get(self.product_type, self.product_type or '—')
+
+
+class AppSetting(db.Model):
+    """Key-value store for app-wide settings (e.g. last GDrive import metadata)."""
+    __tablename__ = 'app_settings'
+    key   = db.Column(db.String(80), primary_key=True)
+    value = db.Column(db.Text, nullable=True)

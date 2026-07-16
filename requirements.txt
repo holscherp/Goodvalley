@@ -7,3 +7,5 @@ playwright==1.44.0
 pandas
 openpyxl
 reportlab
+google-api-python-client
+google-auth
