@@ -54,6 +54,12 @@
                    onchange="this.form.submit()">
           </label>
         </form>
+        <form action="{{ url_for('trigger_gdrive_import') }}" method="post" style="margin:0">
+          <button type="submit" class="act-item act-upload" title="Importar desde Google Drive ahora"
+                  style="cursor:pointer;border:none;background:none;font:inherit">
+            ↓ GDrive
+          </button>
+        </form>
       </div>
     </div>
   </div>
