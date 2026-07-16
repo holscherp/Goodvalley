@@ -10,14 +10,6 @@
       {% if last_imported %}· importado {{ last_imported.strftime('%d-%m-%Y %H:%M') }}{% endif %}
     </p>
   </div>
-  <form method="post" action="{{ url_for('reset_historico') }}"
-        onsubmit="var p=prompt('Ingresa el código para borrar todo el histórico:');if(!p){return false;}this.querySelector('[name=passcode]').value=p;">
-    <input type="hidden" name="passcode" value="">
-    <button type="submit" class="btn"
-            style="background:#e74c3c;color:#fff;border:none;font-size:12px;padding:5px 14px">
-      ⚠ Reset Histórico
-    </button>
-  </form>
   <div class="cards" style="margin:0;gap:10px">
     <div class="card" style="min-width:0;padding:12px 18px">
       <div class="big">{{ display_rows|length }}</div>
@@ -113,4 +105,15 @@ function filterProcesos(q) {
   </p>
 </div>
 {% endif %}
+
+<div style="margin-top:60px;text-align:center">
+  <form method="post" action="{{ url_for('reset_historico') }}"
+        onsubmit="var p=prompt('Código de confirmación:');if(!p){return false;}this.querySelector('[name=passcode]').value=p;">
+    <input type="hidden" name="passcode" value="">
+    <button type="submit"
+            style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;opacity:.5">
+      reset histórico
+    </button>
+  </form>
+</div>
 {% endblock %}

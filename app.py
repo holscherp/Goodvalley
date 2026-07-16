@@ -1594,14 +1594,17 @@ def create_app():
             flash('Código incorrecto.', 'err')
             return redirect(url_for('list_procesos'))
 
-        HistoricoMovimiento.query.delete(synchronize_session=False)
-        Proceso.query.delete(synchronize_session=False)
         OrdenDeVenta.query.delete(synchronize_session=False)
+        Proceso.query.delete(synchronize_session=False)
+        HistoricoMovimiento.query.delete(synchronize_session=False)
         # Clear GDrive last-import marker so next trigger re-imports from scratch
-        for key in ('gdrive_last_file_id', 'gdrive_last_file_name', 'gdrive_last_imported_at'):
-            s = db.session.get(AppSetting, key)
-            if s:
-                db.session.delete(s)
+        try:
+            for key in ('gdrive_last_file_id', 'gdrive_last_file_name', 'gdrive_last_imported_at'):
+                s = db.session.get(AppSetting, key)
+                if s:
+                    db.session.delete(s)
+        except Exception:
+            pass
         db.session.commit()
         flash('Reset completo — procesos, embarques, descartes y saldos eliminados.', 'ok')
         return redirect(url_for('list_procesos'))
