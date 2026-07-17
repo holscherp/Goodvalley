@@ -1100,7 +1100,7 @@ def create_app():
                     )
                 if allocated_bin_ids:
                     q = q.filter(Bin.id.notin_(allocated_bin_ids))
-                search_bins = q.order_by(Bin.bin_identifier).limit(200).all()
+                search_bins = q.order_by(Bin.u_lb.asc().nulls_last(), Bin.bin_identifier).limit(200).all()
 
                 # Compute saldo tarjas so they can be sorted to the top
                 from models import HistoricoMovimiento, WASTE_SERIES as _WS
@@ -1127,7 +1127,7 @@ def create_app():
                     if _t and _r.ot in _shipped_ots and _t not in _cons_t:
                         saldo_tarjas.add(_t)
                 search_bins.sort(
-                    key=lambda b: (0 if b.bin_identifier in saldo_tarjas else 1, b.bin_identifier)
+                    key=lambda b: (0 if b.bin_identifier in saldo_tarjas else 1, b.u_lb or float('inf'), b.bin_identifier)
                 )
 
                 allocated_surplus_ids = {
