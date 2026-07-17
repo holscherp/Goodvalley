@@ -1053,6 +1053,7 @@ def create_app():
         search_bins = []
         search_excedentes = []
         saldo_tarjas = set()
+        caliber_f = u_lb_f = u_lb_lo_f = u_lb_hi_f = None
         if search_line_id and order.status in ('open', 'confirmed'):
             line = next((l for l in order.lines if l.id == search_line_id), None)
             if line:
@@ -1061,12 +1062,34 @@ def create_app():
                     Allocation.query.filter(Allocation.bin_id.isnot(None)).all()
                 }
                 q = Bin.query.filter_by(status='available')
-                caliber_f = request.args.get('caliber_f') or line.caliber
-                u_lb_f    = request.args.get('u_lb_f', type=int)
-                if caliber_f:
-                    q = q.filter(Bin.caliber == caliber_f)
-                if u_lb_f:
-                    q = q.filter(Bin.u_lb == float(u_lb_f))
+
+                # Detect serie-range caliber (e.g. "83-97" has dash but no slash)
+                _is_serie_range = bool(
+                    line.caliber and '-' in line.caliber and '/' not in line.caliber
+                )
+
+                if _is_serie_range:
+                    try:
+                        _lo_s, _hi_s = line.caliber.split('-', 1)
+                        _def_lo, _def_hi = int(_lo_s), int(_hi_s)
+                    except (ValueError, AttributeError):
+                        _def_lo = _def_hi = None
+                    caliber_f  = request.args.get('caliber_f') or ''
+                    u_lb_lo_f  = request.args.get('u_lb_lo_f', type=int) or _def_lo
+                    u_lb_hi_f  = request.args.get('u_lb_hi_f', type=int) or _def_hi
+                    if caliber_f:
+                        q = q.filter(Bin.caliber == caliber_f)
+                    if u_lb_lo_f is not None:
+                        q = q.filter(Bin.u_lb >= float(u_lb_lo_f))
+                    if u_lb_hi_f is not None:
+                        q = q.filter(Bin.u_lb <= float(u_lb_hi_f))
+                else:
+                    caliber_f = request.args.get('caliber_f') or line.caliber
+                    u_lb_f    = request.args.get('u_lb_f', type=int)
+                    if caliber_f:
+                        q = q.filter(Bin.caliber == caliber_f)
+                    if u_lb_f:
+                        q = q.filter(Bin.u_lb == float(u_lb_f))
                 if line.drying:
                     q = q.filter(Bin.drying == line.drying)
                 if line.temporada:
@@ -1128,6 +1151,8 @@ def create_app():
             search_excedentes=search_excedentes,
             search_line_id=search_line_id,
             u_lb_f=u_lb_f if search_line_id else None,
+            u_lb_lo_f=u_lb_lo_f if search_line_id else None,
+            u_lb_hi_f=u_lb_hi_f if search_line_id else None,
             saldo_tarjas=saldo_tarjas,
             CALIBER_OPTIONS=CALIBER_OPTIONS,
             DRYING_LABELS=DRYING_LABELS,

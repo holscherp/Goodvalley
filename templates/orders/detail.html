@@ -243,23 +243,44 @@
   {% if order.status in ('open', 'confirmed') and not line.satisfied %}
   <details class="search-bins" {{ 'open' if search_line_id == line.id }}>
     <summary>🔍 Buscar bins disponibles para esta línea</summary>
+    {% set is_serie_range = '-' in (line.caliber or '') and '/' not in (line.caliber or '') %}
     <form method="get" action="{{ url_for('order_detail', order_id=order.id) }}"
           style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0;align-items:flex-end">
       <input type="hidden" name="search_line" value="{{ line.id }}">
       <div class="fld">
         <label>Calibre</label>
         <select name="caliber_f">
-          <option value="{{ line.caliber or '' }}">{{ line.caliber or 'Cualquiera' }}</option>
+          {% if not is_serie_range %}
+            <option value="{{ line.caliber or '' }}">{{ line.caliber or 'Cualquiera' }}</option>
+          {% else %}
+            <option value="">Cualquiera</option>
+          {% endif %}
           {% for c in CALIBER_OPTIONS %}
             <option value="{{ c }}">{{ c }}</option>
           {% endfor %}
         </select>
       </div>
-      <div class="fld">
-        <label>U/LB exacto</label>
-        <input type="number" name="u_lb_f" value="{{ u_lb_f or '' }}"
-               placeholder="ej. 45" style="width:72px">
-      </div>
+      {% if is_serie_range %}
+        {% set _parts = line.caliber.split('-') %}
+        <div class="fld">
+          <label>Serie desde</label>
+          <input type="number" name="u_lb_lo_f"
+                 value="{{ u_lb_lo_f if u_lb_lo_f is not none else _parts[0] }}"
+                 style="width:68px">
+        </div>
+        <div class="fld">
+          <label>Serie hasta</label>
+          <input type="number" name="u_lb_hi_f"
+                 value="{{ u_lb_hi_f if u_lb_hi_f is not none else _parts[1] }}"
+                 style="width:68px">
+        </div>
+      {% else %}
+        <div class="fld">
+          <label>U/LB exacto</label>
+          <input type="number" name="u_lb_f" value="{{ u_lb_f or '' }}"
+                 placeholder="ej. 45" style="width:72px">
+        </div>
+      {% endif %}
       <button class="btn btn-primary" style="align-self:flex-end">Buscar</button>
     </form>
 
