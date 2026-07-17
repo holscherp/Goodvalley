@@ -188,7 +188,7 @@
   {% if line.allocations %}
   <table class="grid tight">
     <thead><tr>
-      <th>Tarja / Origen</th><th>Producto</th><th>Calibre</th><th>Secado</th>
+      <th>Tarja / Origen</th><th>Producto</th><th>Calibre</th><th>Serie</th><th>Secado</th>
       <th class="num">kg</th><th class="num">Hum / Cajas</th><th>Productor</th><th></th>
     </tr></thead>
     <tbody>
@@ -198,7 +198,8 @@
         <tr>
           <td class="mono">{{ b.bin_identifier }}</td>
           <td>{{ b.producto or '—' }}</td>
-          <td>{{ b.caliber or 'N/A' }}{% if b.u_lb and b.u_lb > 0 %} · {{ b.u_lb | int }}{% endif %}</td>
+          <td>{{ b.caliber or '—' }}</td>
+          <td class="mono">{{ b.u_lb | int if b.u_lb and b.u_lb > 0 else '—' }}</td>
           <td><span class="pill pill-{{ b.drying }}">{{ b.drying_label }}</span></td>
           <td class="num">{{ b.weight_kg }}</td>
           <td class="num">{{ b.humedad if b.humedad is not none else '—' }}</td>
@@ -312,7 +313,7 @@
           <thead><tr>
             <th><input type="checkbox" id="chk-all-{{ line.id }}"
                        onchange="document.querySelectorAll('.chk-{{ line.id }}').forEach(c=>c.checked=this.checked);updateSel{{ line.id }}()"></th>
-            <th>Tarja</th><th>Producto</th><th>Calibre</th><th>Secado</th>
+            <th>Tarja</th><th>Producto</th><th>Calibre</th><th>Serie</th><th>Secado</th>
             <th class="num">kg</th><th class="num">Hum</th><th>Productor</th><th>Temp.</th>
           </tr></thead>
           <tbody>
@@ -326,7 +327,8 @@
                 {% if is_saldo %}<span class="pill pill-saldo">Saldo</span>{% endif %}
               </td>
               <td>{{ b.producto or '—' }}</td>
-              <td>{{ b.caliber or 'N/A' }}{% if b.u_lb and b.u_lb > 0 %} · {{ b.u_lb | int }}{% endif %}</td>
+              <td>{{ b.caliber or '—' }}</td>
+              <td class="mono">{{ b.u_lb | int if b.u_lb and b.u_lb > 0 else '—' }}</td>
               <td><span class="pill pill-{{ b.drying }}">{{ b.drying_label }}</span></td>
               <td class="num">{{ b.weight_kg }}</td>
               <td class="num">{{ b.humedad if b.humedad is not none else '—' }}</td>
@@ -334,7 +336,7 @@
               <td>{{ b.temporada or '—' }}</td>
             </tr>
             {% if is_saldo and not loop.last and search_bins[loop.index].bin_identifier not in saldo_tarjas %}
-            <tr class="saldo-divider"><td colspan="9"></td></tr>
+            <tr class="saldo-divider"><td colspan="10"></td></tr>
             {% endif %}
           {% endfor %}
           </tbody>
