@@ -1720,14 +1720,6 @@ def create_app():
         OrdenDeVenta.query.delete(synchronize_session=False)
         Proceso.query.delete(synchronize_session=False)
         HistoricoMovimiento.query.delete(synchronize_session=False)
-        # Clear GDrive last-import marker so next trigger re-imports from scratch
-        try:
-            for key in ('gdrive_last_file_id', 'gdrive_last_file_name', 'gdrive_last_imported_at'):
-                s = db.session.get(AppSetting, key)
-                if s:
-                    db.session.delete(s)
-        except Exception:
-            pass
         db.session.commit()
         flash('Reset completo — procesos, embarques, descartes y saldos eliminados.', 'ok')
         return redirect(url_for('list_procesos'))
@@ -2620,18 +2612,26 @@ def create_app():
         )
         return redirect(url_for('list_procesos'))
 
-    @app.route('/admin/trigger-gdrive-import', methods=['POST'])
-    def trigger_gdrive_import():
-        """Manually trigger a Google Drive historico import."""
+    @app.route('/api/import-historico', methods=['POST'])
+    def api_import_historico():
+        """Passcode-protected endpoint for Google Apps Script to POST a Historico Excel."""
+        passcode = (request.form.get('passcode') or
+                    request.headers.get('X-Passcode') or '').strip()
+        if passcode != '001083748':
+            return {'error': 'unauthorized'}, 401
+        f = request.files.get('historico_file')
+        if not f:
+            return {'error': 'no file'}, 400
         try:
-            imported, filename = _gdrive_check_and_import(app, force=True)
-            if imported:
-                flash(f'GDrive: importado "{filename}" correctamente.', 'ok')
-            else:
-                flash('GDrive: no hay archivo nuevo (o GDrive no está configurado).', 'info')
+            n_rows, n_procs, n_odvs = _run_historico_import(f.read())
         except Exception as e:
-            flash(f'GDrive error: {e}', 'err')
-        return redirect(url_for('list_procesos'))
+            return {'error': str(e)}, 500
+        return {
+            'ok': True,
+            'rows': n_rows,
+            'procesos': n_procs,
+            'ordenes': n_odvs,
+        }, 200
 
     @app.route('/pallets')
     def list_pallets():
@@ -2783,188 +2783,9 @@ pre{{background:#1a1a2a;padding:12px;white-space:pre-wrap;word-break:break-all;f
 </body></html>'''
         return make_response(html, 200, {'Content-Type': 'text/html; charset=utf-8'})
 
-    # ── Start GDrive background poller ───────────────────────────────────────
-    _start_gdrive_scheduler(app)
-
     return app
 
 
-# ── Google Drive auto-import ──────────────────────────────────────────────────
-
-def _gdrive_check_and_import(app, force=False):
-    """
-    Poll the configured Drive folder for a new historico Excel.
-    Downloads and imports it if newer than the last import (or force=True).
-    Returns (imported: bool, filename: str).
-    Designed to be safe to call from multiple gunicorn workers — uses a
-    PostgreSQL advisory lock so only one worker runs the import at a time.
-    """
-    folder_id = os.environ.get('GDRIVE_FOLDER_ID', '').strip()
-    sa_json   = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON', '').strip()
-    if not folder_id or not sa_json:
-        return False, ''
-
-    with app.app_context():
-        from sqlalchemy import text as _text
-        # Use a dedicated connection for the advisory lock so it stays clean
-        # even if the import session hits an error and aborts its transaction.
-        with db.engine.connect() as lock_conn:
-            got_lock = lock_conn.execute(_text('SELECT pg_try_advisory_lock(7654321)')).scalar()
-            lock_conn.commit()
-            if not got_lock:
-                return False, ''
-            try:
-                return _do_gdrive_import(folder_id, sa_json, force)
-            except Exception:
-                db.session.rollback()
-                raise
-            finally:
-                lock_conn.execute(_text('SELECT pg_advisory_unlock(7654321)'))
-                lock_conn.commit()
-                db.session.remove()
-
-
-def _do_gdrive_import(folder_id, sa_json, force=False):
-    import json as _json, io as _io
-    from google.oauth2 import service_account as _sa
-    from googleapiclient.discovery import build as _build
-    from googleapiclient.http import MediaIoBaseDownload as _DL
-    from models import AppSetting
-
-    creds = _sa.Credentials.from_service_account_info(
-        _json.loads(sa_json),
-        scopes=['https://www.googleapis.com/auth/drive.readonly'],
-    )
-    drive = _build('drive', 'v3', credentials=creds, cache_discovery=False)
-
-    results = drive.files().list(
-        q=(f"'{folder_id}' in parents "
-           f"and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' "
-           f"and trashed=false"),
-        orderBy='modifiedTime desc',
-        pageSize=1,
-        fields='files(id,name,modifiedTime)',
-    ).execute()
-
-    files = results.get('files', [])
-    if not files:
-        return False, ''
-
-    newest   = files[0]
-    file_id  = newest['id']
-    filename = newest['name']
-
-    if not force:
-        last = db.session.get(AppSetting, 'gdrive_last_file_id')
-        if last and last.value == file_id:
-            return False, filename   # already imported this exact file
-
-    # Download
-    buf = _io.BytesIO()
-    request = drive.files().get_media(fileId=file_id)
-    dl = _DL(buf, request)
-    done = False
-    while not done:
-        _, done = dl.next_chunk()
-
-    buf.seek(0)
-    excel_bytes = buf.read()
-
-    # Directly call the pandas import logic (duplicated here to avoid closure scoping issues)
-    import pandas as _pd
-    from models import HistoricoMovimiento, Proceso, OrdenDeVenta, WASTE_SERIES
-    from sqlalchemy import insert as _sa_insert
-
-    df = _pd.read_excel(_io.BytesIO(excel_bytes), engine='openpyxl')
-
-    def _v(val):
-        try:
-            if _pd.isna(val): return None
-        except Exception:
-            pass
-        return val
-    def _str(val):
-        v = _v(val); return str(v).strip() if v is not None else None
-    def _int(val):
-        v = _v(val)
-        try: return int(v) if v is not None else None
-        except Exception: return None
-    def _float(val):
-        v = _v(val)
-        try: return float(v) if v is not None else None
-        except Exception: return None
-
-    HistoricoMovimiento.query.delete(synchronize_session=False)
-    db.session.commit()
-
-    records = []
-    for _, row in df.iterrows():
-        records.append({
-            'idpsj': _float(row.get('IDPSJ')), 'item': _int(row.get('ITEM')),
-            'cdgproducto': _int(row.get('CDGPRODUCTO')), 'idtransaccion': _float(row.get('IDTRANSACCION')),
-            'cdgcontenedor': _int(row.get('CDGCONTENEDOR')), 'cdgmvmnt': _int(row.get('CDGMVMNT')),
-            'cdgclase': _int(row.get('CDGCLASE')), 'cdgbodega': _float(row.get('CDGBODEGA')),
-            'ot': _str(row.get('OT')) or '', 'idot': _int(row.get('IDOT')),
-            'linea': _float(row.get('LINEA')), 'tipo': _str(row.get('TIPO')),
-            'revision': _int(row.get('REVISION')), 'movimiento': _str(row.get('MOVIMIENTO')),
-            'tipomovimiento': _str(row.get('TIPOMOVIMIENTO')), 'sestado': _str(row.get('SESTADO')),
-            'estado': _int(row.get('ESTADO')), 'estadoitem': _float(row.get('ESTADOITEM')),
-            'sestadoitem': _float(row.get('SESTADOITEM')), 'fecha': _v(row.get('FECHA')),
-            'fechaproduccion': _v(row.get('FECHAPRODUCCION')), 'horaproduccion': _str(row.get('HORAPRODUCCION')),
-            'tarja': _str(row.get('TARJA')), 'serie': _str(row.get('SERIE')),
-            'lote': _str(row.get('LOTE')), 'guia': _float(row.get('GUIA')),
-            'producto': _str(row.get('PRODUCTO')), 'temporada': _float(row.get('TEMPORADA')),
-            'neto': _float(row.get('NETO')), 'bruto': _float(row.get('BRUTO')),
-            'tara': _float(row.get('TARA')), 'taracontenedor': _float(row.get('TARACONTENEDOR')),
-            'unidades': _int(row.get('UNIDADES')), 'unidad': _str(row.get('UNIDAD')),
-            'u_lb': _float(row.get('U_LB')), 'u_lb1': _float(row.get('U_LB1')),
-            'u_lb2': _float(row.get('U_LB2')), 'u_lb3': _float(row.get('U_LB3')),
-            'u_lb4': _float(row.get('U_LB4')), 'tipoproceso': _str(row.get('TIPOPROCESO')),
-            'secado': _str(row.get('SECADO')), 'productor': _str(row.get('PRODUCTOR')),
-            'rutproductor': _str(row.get('RUTPRODUCTOR')), 'exportador': _str(row.get('EXPORTADOR')),
-            'rutexportador': _str(row.get('RUTEXPORTADOR')), 'cliente': _str(row.get('CLIENTE')),
-            'usr': _str(row.get('USR')), 'turno': _int(row.get('TURNO')),
-            'contenedor': _str(row.get('CONTENEDOR')), 'tipocontenedor': _str(row.get('TIPOCONTENEDOR')),
-            'bodega': _str(row.get('BODEGA')), 'humedad': _float(row.get('HUMEDAD')),
-            'preservante': _float(row.get('PRESERVANTE')), 'aceite': _float(row.get('ACEITE')),
-            'carozo_col': _float(row.get('CAROZO')), 'pallet_clase': _str(row.get('PALLET_CLASE')),
-            's_pallet_clase': _str(row.get('S_PALLET_CLASE')), 'pallet_estado_ot': _str(row.get('PALLET_ESTADO_OT')),
-            's_pallet_estado_ot': _str(row.get('S_PALLET_ESTADO_OT')),
-            'pallet_estado_vigente': _str(row.get('PALLET_ESTADO_VIGENTE')),
-            's_pallet_estado_vigente': _str(row.get('S_PALLET_ESTADO_VIGENTE')),
-            'presenciametales': _str(row.get('PRESENCIAMETALES')),
-            's_presenciametales': _str(row.get('S_PRESENCIAMETALES')),
-            'idbins2': _str(row.get('IDBINS2')), 'count_ticket': _float(row.get('COUNT_TICKET')),
-            'ticket_pesaje': _float(row.get('TICKET_PESAJE')),
-            'documentoreferencia': _str(row.get('DOCUMENTOREFERENCIA')),
-            'observaciones': _str(row.get('OBSERVACIONES')), 'idoe': _float(row.get('IDOE')),
-            'idsb': _float(row.get('IDSB')), 'sb': _float(row.get('SB')),
-            'idreproceso': _float(row.get('IDREPROCESO')), 'idrepaletizaje': _float(row.get('IDREPALETIZAJE')),
-            'idreembalaje': _float(row.get('IDREEMBALAJE')), 'idreenvasado': _float(row.get('IDREENVASADO')),
-            'x': _str(row.get('X')), 'y': _float(row.get('Y')),
-            'z': _float(row.get('Z')), 'direccion': _float(row.get('DIRECCION')),
-        })
-
-    db.session.execute(_sa_insert(HistoricoMovimiento), records)
-    db.session.commit()
-
-    # Rebuild Proceso and OrdenDeVenta (same logic as manual import)
-    _rebuild_summaries(df, WASTE_SERIES)
-
-    # Save which file we just imported
-    def _upsert_setting(key, value):
-        s = db.session.get(AppSetting, key)
-        if s is None:
-            s = AppSetting(key=key, value=value)
-            db.session.add(s)
-        else:
-            s.value = value
-    _upsert_setting('gdrive_last_file_id',      file_id)
-    _upsert_setting('gdrive_last_file_name',    filename)
-    _upsert_setting('gdrive_last_imported_at',  datetime.utcnow().isoformat())
-    db.session.commit()
-
-    return True, filename
 
 
 def _rebuild_summaries(df, WASTE_SERIES):
@@ -3076,28 +2897,6 @@ def _rebuild_summaries(df, WASTE_SERIES):
     db.session.commit()
 
 
-def _start_gdrive_scheduler(app):
-    """Start a daemon thread that checks Drive for a new historico every hour."""
-    import threading, time
-
-    # Don't start in the werkzeug reloader child process
-    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
-        return
-
-    def _loop():
-        time.sleep(30)   # short delay on startup so the DB is ready
-        while True:
-            try:
-                imported, fname = _gdrive_check_and_import(app)
-                if imported:
-                    app.logger.info(f'GDrive auto-import: imported "{fname}"')
-            except Exception as e:
-                app.logger.error(f'GDrive auto-import error: {e}')
-            time.sleep(3600)   # check every hour
-
-    t = threading.Thread(target=_loop, daemon=True)
-    t.name = 'gdrive-poller'
-    t.start()
 
 
 def _pre_migrate(db_obj):
