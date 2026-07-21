@@ -578,30 +578,36 @@ def _upload_pallets(pallets_data):
 async def main():
     SCREENSHOT_DIR.mkdir(exist_ok=True)
     print(f'[{datetime.datetime.now():%Y-%m-%d %H:%M:%S}] '
-          f'Full sync — Bins en Bodega')
+          f'Full sync — Bins en Bodega + Pallets en Bodega')
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
             headless=True,
             args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
         )
-        ctx_bins = await browser.new_context()
+        ctx_bins    = await browser.new_context()
+        ctx_pallets = await browser.new_context()
         try:
-            print('▶ Scraping Bins en Bodega...')
-            bins_data = await scrape_bins_section(ctx_bins)
-        except Exception as e:
-            bins_data = e
+            print('▶ Scraping Bins + Pallets en Bodega (paralelo)...')
+            bins_data, pallets_data = await asyncio.gather(
+                scrape_bins_section(ctx_bins),
+                scrape_pallets_section(ctx_pallets),
+                return_exceptions=True,
+            )
         finally:
             await browser.close()
 
     if isinstance(bins_data, Exception):
         print(f'✗ BINS: {bins_data}', file=sys.stderr)
+        bins_data = None
+    if isinstance(pallets_data, Exception):
+        print(f'✗ PALLETS: {pallets_data}', file=sys.stderr)
+        pallets_data = None
 
-    bins_ok = not isinstance(bins_data, Exception)
+    bins_ok    = bins_data is not None
+    pallets_ok = pallets_data is not None
 
     # ── Link raw bins via historico xlsx ─────────────────────────────────────
-    # EGRESO A PROCESO rows where TARJA starts with 25/26 are raw bins leaving
-    # bodega for processing. TARJA = bin_identifier (10-digit tarja).
     if HISTORICO_PATH.exists() and bins_ok:
         try:
             import pandas as _pd
@@ -638,12 +644,19 @@ async def main():
         BINS_OUT.write_text(json.dumps(bins_data, indent=2, ensure_ascii=False))
         print(f'✓ Bins: {len(bins_data)} ciruelas → {BINS_OUT}')
 
+    if pallets_ok:
+        PALLETS_OUT.write_text(json.dumps(pallets_data, indent=2, ensure_ascii=False))
+        print(f'✓ Pallets: {len(pallets_data)} pallets → {PALLETS_OUT}')
+
     if os.environ.get('GV_NO_UPLOAD'):
         print('GV_NO_UPLOAD activo — sin upload.')
         return
 
     if bins_ok and bins_data:
         _upload_bins(bins_data)
+
+    if pallets_ok and pallets_data:
+        _upload_pallets(pallets_data)
 
     print('\n✓ Full sync completado.')
 
