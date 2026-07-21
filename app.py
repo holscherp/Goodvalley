@@ -2325,11 +2325,24 @@ def create_app():
         total_kg_all = sum(s['total_kg'] for s in saldos)
 
         q_init = request.args.get('q', '')
+
+        # Collect every tarja already shown in the Histórico saldos section
+        historico_tarjas = set()
+        for s in saldos:
+            for r in s['tarjas']:
+                if r.tarja:
+                    historico_tarjas.add(r.tarja.strip())
+
         from models import Pallet
-        saldo_pallets = (Pallet.query
-                         .filter(Pallet.ot.in_(list(ots_with_embarque)))
-                         .order_by(Pallet.ot, Pallet.tarja)
-                         .all()) if ots_with_embarque else []
+        saldo_pallets = [
+            p for p in (
+                Pallet.query
+                .filter(Pallet.ot.in_(list(ots_with_embarque)))
+                .filter(Pallet.weight_kg > 0)
+                .order_by(Pallet.ot, Pallet.tarja)
+                .all()
+            ) if p.tarja not in historico_tarjas
+        ] if ots_with_embarque else []
         return render_template('saldos.html',
                                saldos=saldos,
                                total_kg=total_kg_all,
