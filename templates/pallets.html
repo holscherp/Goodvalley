@@ -2,6 +2,18 @@
 {% block title %}Pallets en Bodega · Goodvalley{% endblock %}
 
 {% block content %}
+{% set saldo_count = namespace(n=0, kg=0) %}
+{% set activo_count = namespace(n=0, kg=0) %}
+{% for p in pallets %}
+  {% if p.ot in shipped_ots %}
+    {% set saldo_count.n = saldo_count.n + 1 %}
+    {% set saldo_count.kg = saldo_count.kg + (p.weight_kg or 0) %}
+  {% else %}
+    {% set activo_count.n = activo_count.n + 1 %}
+    {% set activo_count.kg = activo_count.kg + (p.weight_kg or 0) %}
+  {% endif %}
+{% endfor %}
+
 <div class="row-between">
   <div>
     <h1>Pallets en Bodega</h1>
@@ -13,38 +25,52 @@
   <div class="cards" style="margin:0;gap:10px">
     <div class="card" style="min-width:0;padding:12px 18px">
       <div class="big">{{ pallets|length }}</div>
-      <div class="lbl">Pallets</div>
+      <div class="lbl">Total pallets</div>
     </div>
-    {% set saldo_count = namespace(n=0) %}
-    {% for p in pallets %}{% if p.ot in shipped_ots %}{% set saldo_count.n = saldo_count.n + 1 %}{% endif %}{% endfor %}
     <div class="card" style="min-width:0;padding:12px 18px;border:1px solid #f59e0b">
       <div class="big" style="color:#92400e">{{ saldo_count.n }}</div>
       <div class="lbl">En saldo</div>
     </div>
     <div class="card" style="min-width:0;padding:12px 18px">
-      <div class="big">{{ "{:,.0f}".format(pallets|sum(attribute='weight_kg') or 0) }}</div>
-      <div class="lbl">kg totales</div>
+      <div class="big">{{ activo_count.n }}</div>
+      <div class="lbl">Activos</div>
     </div>
   </div>
 </div>
 
 {% if pallets %}
-<div style="margin-bottom:10px;display:flex;gap:12px;align-items:center">
+
+{# ── Tab bar ── #}
+<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px">
+  <button id="tab-btn-saldo" onclick="switchTab('saldo')"
+          style="padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer;
+                 background:none;border:none;border-bottom:3px solid var(--purple);
+                 color:var(--purple);margin-bottom:-2px">
+    Saldos <span style="font-size:11px;font-weight:400;color:var(--muted)">({{ saldo_count.n }})</span>
+  </button>
+  <button id="tab-btn-activo" onclick="switchTab('activo')"
+          style="padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer;
+                 background:none;border:none;border-bottom:3px solid transparent;
+                 color:var(--muted);margin-bottom:-2px">
+    Activos <span style="font-size:11px;font-weight:400">({{ activo_count.n }})</span>
+  </button>
+</div>
+
+{# ── Search bar ── #}
+<div style="margin-bottom:12px">
   <input id="pallet-search" type="text" placeholder="Buscar tarja, OT, cliente, calibre…"
          style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
                 background:var(--card);color:var(--fg);font-size:13px;width:280px"
          oninput="filterPallets(this.value)">
-  <label style="font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer">
-    <input type="checkbox" id="only-saldo" onchange="filterPallets(document.getElementById('pallet-search').value)">
-    Solo saldo
-  </label>
 </div>
 
-<table class="grid tight" id="pallet-table">
+{# ── Saldos table ── #}
+<div id="panel-saldo">
+<table class="grid tight" id="table-saldo">
   <thead><tr>
     <th>Tarja</th>
     <th>OT</th>
-    <th>Estado</th>
+    <th>Motivo</th>
     <th>Cliente</th>
     <th>Producto</th>
     <th>Calibre</th>
@@ -55,47 +81,88 @@
     <th class="num">Cajas</th>
   </tr></thead>
   <tbody>
-  {% for p in pallets %}
-  {% set is_saldo = p.ot in shipped_ots %}
-  <tr data-saldo="{{ 'yes' if is_saldo else 'no' }}">
+  {% for p in pallets %}{% if p.ot in shipped_ots %}
+  <tr>
     <td class="mono">{{ p.tarja }}</td>
     <td class="mono">{{ p.ot or '—' }}</td>
     <td>
-      {% if is_saldo %}
-        <span class="pill" style="background:#fef3c7;color:#92400e;font-weight:700">Saldo</span>
-        {% if p.pallet_estado_ot == 'F' %}
-          <span class="pill" style="background:#fee2e2;color:#b91c1c;font-size:10px">No cumplió</span>
-        {% elif p.pallet_estado_ot == 'T' %}
-          <span class="pill" style="background:#d1fae5;color:#065f46;font-size:10px">Excedente</span>
-        {% endif %}
+      {% if p.pallet_estado_ot == 'F' %}
+        <span class="pill" style="background:#fee2e2;color:#b91c1c;font-size:11px">No cumplió</span>
+      {% elif p.pallet_estado_ot == 'T' %}
+        <span class="pill" style="background:#d1fae5;color:#065f46;font-size:11px">Excedente</span>
       {% else %}
-        <span class="pill" style="background:var(--lavender);color:var(--purple)">Activo</span>
+        <span class="pill" style="background:#fef3c7;color:#92400e;font-size:11px">Saldo</span>
       {% endif %}
     </td>
     <td>{{ p.customer or '—' }}</td>
     <td style="font-size:12px">{{ p.producto or '—' }}</td>
     <td>{{ p.caliber or '—' }}</td>
     <td style="font-size:12px">{{ p.s_pallet_clase or '—' }}</td>
-    <td>
-      {% if p.drying %}<span class="pill pill-{{ p.drying }}">{{ p.drying_label }}</span>
-      {% else %}—{% endif %}
-    </td>
+    <td>{% if p.drying %}<span class="pill pill-{{ p.drying }}">{{ p.drying_label }}</span>{% else %}—{% endif %}</td>
     <td>{{ p.temporada or '—' }}</td>
     <td class="num"><strong>{{ "{:,.1f}".format(p.weight_kg or 0) }}</strong></td>
     <td class="num">{{ p.unidades or '—' }}</td>
   </tr>
-  {% endfor %}
+  {% endif %}{% endfor %}
   </tbody>
 </table>
+</div>
+
+{# ── Activos table ── #}
+<div id="panel-activo" style="display:none">
+<table class="grid tight" id="table-activo">
+  <thead><tr>
+    <th>Tarja</th>
+    <th>OT</th>
+    <th>Cliente</th>
+    <th>Producto</th>
+    <th>Calibre</th>
+    <th>Clase</th>
+    <th>Secado</th>
+    <th>Temp.</th>
+    <th class="num">kg</th>
+    <th class="num">Cajas</th>
+  </tr></thead>
+  <tbody>
+  {% for p in pallets %}{% if p.ot not in shipped_ots %}
+  <tr>
+    <td class="mono">{{ p.tarja }}</td>
+    <td class="mono">{{ p.ot or '—' }}</td>
+    <td>{{ p.customer or '—' }}</td>
+    <td style="font-size:12px">{{ p.producto or '—' }}</td>
+    <td>{{ p.caliber or '—' }}</td>
+    <td style="font-size:12px">{{ p.s_pallet_clase or '—' }}</td>
+    <td>{% if p.drying %}<span class="pill pill-{{ p.drying }}">{{ p.drying_label }}</span>{% else %}—{% endif %}</td>
+    <td>{{ p.temporada or '—' }}</td>
+    <td class="num"><strong>{{ "{:,.1f}".format(p.weight_kg or 0) }}</strong></td>
+    <td class="num">{{ p.unidades or '—' }}</td>
+  </tr>
+  {% endif %}{% endfor %}
+  </tbody>
+</table>
+</div>
 
 <script>
+var activeTab = 'saldo';
+
+function switchTab(tab) {
+  activeTab = tab;
+  ['saldo', 'activo'].forEach(function(t) {
+    var btn = document.getElementById('tab-btn-' + t);
+    var panel = document.getElementById('panel-' + t);
+    var active = (t === tab);
+    btn.style.color = active ? 'var(--purple)' : 'var(--muted)';
+    btn.style.borderBottomColor = active ? 'var(--purple)' : 'transparent';
+    panel.style.display = active ? '' : 'none';
+  });
+  filterPallets(document.getElementById('pallet-search').value);
+}
+
 function filterPallets(q) {
   q = q.toLowerCase();
-  var onlySaldo = document.getElementById('only-saldo').checked;
-  document.querySelectorAll('#pallet-table tbody tr').forEach(function(tr) {
-    var matchQ = !q || tr.textContent.toLowerCase().includes(q);
-    var matchS = !onlySaldo || tr.dataset.saldo === 'yes';
-    tr.style.display = (matchQ && matchS) ? '' : 'none';
+  var tableId = 'table-' + activeTab;
+  document.querySelectorAll('#' + tableId + ' tbody tr').forEach(function(tr) {
+    tr.style.display = (!q || tr.textContent.toLowerCase().includes(q)) ? '' : 'none';
   });
 }
 </script>
@@ -103,7 +170,7 @@ function filterPallets(q) {
 {% else %}
 <div class="empty">
   <p>No hay pallets registrados todavía.</p>
-  <p class="muted" style="margin-top:6px">Presioná <strong>Actualizar → Subir Bins en Bodega</strong> para traer los datos desde pWarehouse.</p>
+  <p class="muted" style="margin-top:6px">Presioná <strong>Actualizar → Sync Completo</strong> para traer los datos desde pWarehouse.</p>
 </div>
 {% endif %}
 {% endblock %}
