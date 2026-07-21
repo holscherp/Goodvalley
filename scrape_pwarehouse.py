@@ -285,6 +285,8 @@ async def scrape_pallets_en_bodega():
                 print(f'  [Pallets] → {len(extra_rows)} adicionales (total: {len(all_rows)})')
 
         await browser.close()
+        if all_rows:
+            print(f'  [Pallets] Muestra primera fila: {json.dumps(all_rows[0], ensure_ascii=False)[:300]}')
         pallets = _transform_pallet_rows(all_rows)
         print(f'✓ [Pallets] {len(pallets)} pallets extraídos de {len(all_rows)} filas')
         return pallets
@@ -458,7 +460,16 @@ async def main():
         OUTPUT_FILE.write_text(json.dumps(bins, indent=2, ensure_ascii=False))
         print(f'✓ Guardado en {OUTPUT_FILE}')
 
-        # ── 7. Upload to Goodvalley (3 retries) ───────────────────────────────
+        # ── 7. Pallets en Bodega (always, before upload decision) ─────────────
+        if PALLETS_OUTPUT_FILE.name:
+            try:
+                pallets = await scrape_pallets_en_bodega()
+                PALLETS_OUTPUT_FILE.write_text(json.dumps(pallets, indent=2, ensure_ascii=False))
+                print(f'✓ Pallets guardados en {PALLETS_OUTPUT_FILE}')
+            except Exception as _pe:
+                print(f'⚠ Error scrapeando pallets: {_pe}')
+
+        # ── 8. Upload to Goodvalley (3 retries) ───────────────────────────────
         if os.environ.get('GV_NO_UPLOAD'):
             print(f'✓ GV_NO_UPLOAD activo — omitiendo upload (archivo en {OUTPUT_FILE})')
             print('\n✓ Listo.')
@@ -496,15 +507,6 @@ async def main():
         if not uploaded:
             print(f'  ⚠ Upload falló tras 3 intentos — {OUTPUT_FILE} guardado localmente.')
             sys.exit(1)
-
-        # ── Pallets en Bodega (if output path set) ────────────────────────────
-        if PALLETS_OUTPUT_FILE.name:
-            try:
-                pallets = await scrape_pallets_en_bodega()
-                PALLETS_OUTPUT_FILE.write_text(json.dumps(pallets, indent=2, ensure_ascii=False))
-                print(f'✓ Pallets guardados en {PALLETS_OUTPUT_FILE}')
-            except Exception as _pe:
-                print(f'⚠ Error scrapeando pallets: {_pe}')
 
         print('\n🎉 Listo.')
 
