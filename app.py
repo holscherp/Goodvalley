@@ -573,6 +573,53 @@ def create_app():
                         lf.write(f'✗ Error importando bins: {e}\n')
                         lf.flush()
 
+            # ── Import pallets ────────────────────────────────────────────────
+            if pallets_path.exists():
+                try:
+                    from models import Pallet as _Pallet
+                    pallets_data = _json.loads(pallets_path.read_text())
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'► Importando {len(pallets_data)} pallets...\n')
+                        lf.flush()
+                    with _app.app_context():
+                        import datetime as _dt
+                        existing_p = {row[0] for row in db.session.query(_Pallet.tarja).all()}
+                        added_p = updated_p = 0
+                        for p in pallets_data:
+                            tarja = str(p.get('tarja') or '').strip()
+                            if not tarja:
+                                continue
+                            fields = {
+                                'ot':               str(p.get('ot') or '').strip() or None,
+                                'customer':         str(p.get('customer') or '').strip() or None,
+                                'caliber':          str(p.get('caliber') or '').strip() or None,
+                                'drying':           p.get('drying') or None,
+                                'product_type':     p.get('product_type') or None,
+                                'weight_kg':        float(p.get('weight_kg') or 0),
+                                'producto':         str(p.get('producto') or '').strip() or None,
+                                'temporada':        str(p.get('temporada') or '').strip() or None,
+                                'pallet_estado_ot': p.get('pallet_estado_ot') or None,
+                                's_pallet_clase':   p.get('s_pallet_clase') or None,
+                                'unidades':         int(p['unidades']) if p.get('unidades') else None,
+                                'synced_at':        _dt.datetime.utcnow(),
+                            }
+                            if tarja in existing_p:
+                                db.session.query(_Pallet).filter_by(tarja=tarja).update(
+                                    fields, synchronize_session=False)
+                                updated_p += 1
+                            else:
+                                db.session.add(_Pallet(tarja=tarja, **fields))
+                                existing_p.add(tarja)
+                                added_p += 1
+                        db.session.commit()
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'✓ Pallets: {added_p} nuevos, {updated_p} actualizados.\n')
+                        lf.flush()
+                except Exception as _ep:
+                    with open(log_path, 'a') as lf:
+                        lf.write(f'⚠ Error importando pallets: {_ep}\n')
+                        lf.flush()
+
             status_path.write_text('done:0')
 
         threading.Thread(target=run, daemon=True).start()
