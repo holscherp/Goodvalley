@@ -283,7 +283,10 @@ def _transform_pallets(raw_rows):
         if estado and 'DISPONIBLE' not in estado.upper() and estado:
             continue  # skip non-available pallets
 
-        kg      = float(neto) if neto is not None else 0.0
+        try:
+            kg = float(neto) if neto not in (None, '', 'None') else 0.0
+        except (ValueError, TypeError):
+            kg = 0.0
         caliber = serie if _CALIBER_RE.search(serie) else None
         pt      = _TIPO_MAP.get(tipo.lower().strip())
 
