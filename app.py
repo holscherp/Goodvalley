@@ -2472,6 +2472,7 @@ def create_app():
         n_rows = len(records)
 
         # ── 2. Rebuild Proceso summaries ──────────────────────────────────
+        OrdenDeVenta.query.delete(synchronize_session=False)
         Proceso.query.delete(synchronize_session=False)
         db.session.commit()
 
@@ -2556,8 +2557,6 @@ def create_app():
         db.session.commit()
 
         # ── 3. Rebuild OrdenDeVenta summaries ─────────────────────────────
-        OrdenDeVenta.query.delete(synchronize_session=False)
-        db.session.commit()
 
         emb_mask = mov_col == 'EMBARQUE'
         emb_ots  = sorted(set(ot_col[emb_mask]))
@@ -2793,6 +2792,7 @@ def _rebuild_summaries(df, WASTE_SERIES):
     from models import Proceso, OrdenDeVenta
     from sqlalchemy import insert as _sa_insert
 
+    OrdenDeVenta.query.delete(synchronize_session=False)
     Proceso.query.delete(synchronize_session=False)
     db.session.commit()
 
@@ -2862,9 +2862,6 @@ def _rebuild_summaries(df, WASTE_SERIES):
 
     if proc_records:
         db.session.execute(_sa_insert(Proceso), proc_records)
-    db.session.commit()
-
-    OrdenDeVenta.query.delete(synchronize_session=False)
     db.session.commit()
 
     emb_ots = sorted(set(ot_col[mov_col == 'EMBARQUE']))
