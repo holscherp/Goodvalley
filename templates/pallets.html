@@ -4,7 +4,7 @@
 {% block content %}
 {% set saldo_count = namespace(n=0, kg=0) %}
 {% set activo_count = namespace(n=0, kg=0) %}
-{% for p in pallets %}
+{% for p in pallets %}{% if p.weight_kg and p.weight_kg > 0 %}
   {% if p.ot in shipped_ots %}
     {% set saldo_count.n = saldo_count.n + 1 %}
     {% set saldo_count.kg = saldo_count.kg + (p.weight_kg or 0) %}
@@ -12,7 +12,7 @@
     {% set activo_count.n = activo_count.n + 1 %}
     {% set activo_count.kg = activo_count.kg + (p.weight_kg or 0) %}
   {% endif %}
-{% endfor %}
+{% endif %}{% endfor %}
 
 <div class="row-between">
   <div>
@@ -81,7 +81,7 @@
     <th class="num">Cajas</th>
   </tr></thead>
   <tbody>
-  {% for p in pallets %}{% if p.ot in shipped_ots %}
+  {% for p in pallets %}{% if p.ot in shipped_ots and p.weight_kg and p.weight_kg > 0 %}
   <tr>
     <td class="mono">{{ p.tarja }}</td>
     <td class="mono">{{ p.ot or '—' }}</td>
@@ -124,7 +124,7 @@
     <th class="num">Cajas</th>
   </tr></thead>
   <tbody>
-  {% for p in pallets %}{% if p.ot not in shipped_ots %}
+  {% for p in pallets %}{% if p.ot not in shipped_ots and p.weight_kg and p.weight_kg > 0 %}
   <tr>
     <td class="mono">{{ p.tarja }}</td>
     <td class="mono">{{ p.ot or '—' }}</td>
