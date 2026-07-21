@@ -586,6 +586,9 @@ class Pallet(db.Model):
     temporada    = db.Column(db.String(10),  nullable=True)
     bin_ids_json = db.Column(db.Text,        nullable=True)
     synced_at    = db.Column(db.DateTime,    default=datetime.utcnow)
+    pallet_estado_ot = db.Column(db.String(5),  nullable=True)
+    s_pallet_clase   = db.Column(db.String(30), nullable=True)
+    unidades         = db.Column(db.Integer,    nullable=True)
 
     @property
     def bin_identifiers(self):

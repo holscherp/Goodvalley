@@ -16,8 +16,9 @@ PWAREHOUSE_URL  = os.environ.get('PWAREHOUSE_URL', 'http://190.211.168.247:8077'
 RUT             = os.environ.get('PWAREHOUSE_RUT',  '20664661-6')
 PASSWORD        = os.environ.get('PWAREHOUSE_PASS', 'estante991')
 GOODVALLEY_URL  = os.environ.get('GOODVALLEY_URL',  'https://web-production-2eea96.up.railway.app')
-OUTPUT_FILE     = Path(os.environ.get('GV_OUTPUT', str(Path.home() / 'Desktop' / 'bins_scraped.json')))
-SCREENSHOT_DIR  = Path('/tmp/gv_scraper')
+OUTPUT_FILE          = Path(os.environ.get('GV_OUTPUT', str(Path.home() / 'Desktop' / 'bins_scraped.json')))
+PALLETS_OUTPUT_FILE  = Path(os.environ.get('GV_PALLETS_OUT', ''))
+SCREENSHOT_DIR       = Path('/tmp/gv_scraper')
 
 _CALIBER_RE = re.compile(r'(\d{2,3}/\d{2,3}|\d{2,3}\+)')
 _DRYING_MAP = {
@@ -118,6 +119,175 @@ def _transform_rows(raw_rows):
             'temporada': temporada,
         })
     return bins
+
+
+def _transform_pallet_rows(raw_rows):
+    pallets = []
+    for row in raw_rows:
+        def rv(name, idx):
+            if isinstance(row, dict):
+                v = row.get(name)
+                if v is None:
+                    v = row.get(str(idx))
+                return v
+            try:
+                return row[idx]
+            except (IndexError, KeyError):
+                return None
+
+        producto = str(rv('PRODUCTO', 8) or '').strip()
+        if 'CIRUELA' not in producto.upper():
+            continue
+        tarja  = str(rv('TARJA', 0) or '').strip()
+        ot     = str(rv('OT', 5) or '').strip()
+        estado = str(rv('ESTADO', 15) or '').strip()
+        if not tarja or not ot:
+            continue
+        if estado and 'DISPONIBLE' not in estado.upper() and estado:
+            continue
+        serie            = str(rv('SERIE', 11) or '').strip()
+        neto_raw         = rv('NETO(kg)', 13) or rv('NETO', 13) or 0
+        unidades_raw     = rv('UNIDADES', 12)
+        pallet_estado_ot = str(rv('PALLET_ESTADO_OT', 2) or '').strip() or None
+        s_pallet_clase   = str(rv('S_PALLET_CLASE', 1) or '').strip() or None
+        cliente          = str(rv('CLIENTE', 14) or '').strip()
+        m = _CALIBER_RE.search(serie)
+        caliber = m.group(1) if m else None
+        p = producto.upper()
+        if 'HORNO' in p:
+            drying = 'horno'
+        elif any(k in p for k in ('SOL', 'CANCHA', 'CAMPO')):
+            drying = 'cancha'
+        else:
+            drying = 'termino_secado'
+        pallets.append({
+            'tarja':            tarja,
+            'ot':               ot,
+            'customer':         cliente,
+            'caliber':          caliber,
+            'drying':           drying,
+            'weight_kg':        float(neto_raw) if neto_raw else 0.0,
+            'producto':         producto,
+            'unidades':         int(unidades_raw) if unidades_raw else None,
+            'pallet_estado_ot': pallet_estado_ot,
+            's_pallet_clase':   s_pallet_clase,
+        })
+    return pallets
+
+
+async def scrape_pallets_en_bodega():
+    import datetime as _dt
+    print(f'\n[{_dt.datetime.now():%Y-%m-%d %H:%M:%S}] Scrapeando Pallets en Bodega...')
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+        )
+        page = await browser.new_page()
+        for attempt in range(1, 4):
+            try:
+                await page.goto(PWAREHOUSE_URL, timeout=30000)
+                await page.wait_for_load_state('networkidle')
+                break
+            except Exception as e:
+                if attempt == 3:
+                    raise RuntimeError(f'No se pudo conectar a pWarehouse (pallets): {e}')
+                await asyncio.sleep(5)
+        await page.locator('input[name="O2F"]').fill(RUT)
+        await page.locator('input[name="O17"]').fill(PASSWORD)
+        btn = page.locator('#O23_id')
+        if await btn.count():
+            await btn.click()
+        else:
+            await click_by_text(page, 'Aceptar')
+        await page.wait_for_load_state('networkidle', timeout=20000)
+        await page.wait_for_timeout(3000)
+        for _ in range(8):
+            if not await page.locator('input[name="O2F"]').count():
+                break
+            await page.wait_for_timeout(1000)
+
+        print('▶ [Pallets] Navegando a Pallets en Bodega...')
+        await page.wait_for_timeout(3000)
+        found = False
+        for label in ('Pallets en bodega', 'Pallets en Bodega', 'Pallets bodega', 'Pallets'):
+            if await click_by_text(page, label):
+                found = True
+                break
+        if not found:
+            await browser.close()
+            raise RuntimeError('[Pallets] Menú Pallets en Bodega no encontrado.')
+
+        await page.wait_for_timeout(3000)
+        await page.wait_for_load_state('networkidle', timeout=15000)
+
+        all_rows = []
+        data_total = [None]
+        captured_url = [None]
+
+        async def on_response(response):
+            url = response.url
+            if '/HandleEvent' not in url:
+                return
+            try:
+                text = await response.text()
+            except Exception:
+                return
+            if not text or not text.startswith('{'):
+                return
+            try:
+                obj = json.loads(text)
+            except Exception:
+                return
+            rows = obj.get('rows')
+            if not isinstance(rows, list) or not rows:
+                return
+            if captured_url[0] is None:
+                captured_url[0] = url
+            if data_total[0] is None:
+                data_total[0] = int(obj.get('results', len(rows)))
+            all_rows.extend(rows)
+            print(f'  [Pallets] → {len(rows)} filas (acumulado: {len(all_rows)} / {data_total[0]})')
+
+        page.on('response', on_response)
+        act = page.locator('#O137_id')
+        if await act.count():
+            await act.click()
+        else:
+            await click_by_text(page, 'Actualizar')
+
+        for tick in range(40):
+            await page.wait_for_timeout(3000)
+            print(f'  [Pallets] {(tick+1)*3}s → {len(all_rows)} / {data_total[0] or 0}')
+            if all_rows and (data_total[0] is None or len(all_rows) >= data_total[0]):
+                break
+
+        if all_rows and data_total[0] and len(all_rows) < data_total[0] and captured_url[0]:
+            qs   = parse_qs(urlparse(captured_url[0]).query, keep_blank_values=True)
+            flat = {k: v[0] for k, v in qs.items()}
+            limit = int(flat.get('limit', 2000))
+            while len(all_rows) < data_total[0]:
+                start = len(all_rows)
+                flat.update({'start': str(start), 'page': str(start // limit + 1)})
+                extra_url = '/HandleEvent?' + urlencode(flat)
+                extra_text = await page.evaluate(
+                    f'async () => {{ const r = await fetch({json.dumps(extra_url)}, '
+                    f'{{credentials:"include",headers:{{"X-Requested-With":"XMLHttpRequest"}}}}); '
+                    f'return r.text(); }}'
+                )
+                try:
+                    extra_rows = json.loads(extra_text).get('rows', [])
+                except Exception:
+                    break
+                if not extra_rows:
+                    break
+                all_rows.extend(extra_rows)
+                print(f'  [Pallets] → {len(extra_rows)} adicionales (total: {len(all_rows)})')
+
+        await browser.close()
+        pallets = _transform_pallet_rows(all_rows)
+        print(f'✓ [Pallets] {len(pallets)} pallets extraídos de {len(all_rows)} filas')
+        return pallets
 
 
 async def click_by_text(page, text):
@@ -326,6 +496,15 @@ async def main():
         if not uploaded:
             print(f'  ⚠ Upload falló tras 3 intentos — {OUTPUT_FILE} guardado localmente.')
             sys.exit(1)
+
+        # ── Pallets en Bodega (if output path set) ────────────────────────────
+        if PALLETS_OUTPUT_FILE.name:
+            try:
+                pallets = await scrape_pallets_en_bodega()
+                PALLETS_OUTPUT_FILE.write_text(json.dumps(pallets, indent=2, ensure_ascii=False))
+                print(f'✓ Pallets guardados en {PALLETS_OUTPUT_FILE}')
+            except Exception as _pe:
+                print(f'⚠ Error scrapeando pallets: {_pe}')
 
         print('\n🎉 Listo.')
 

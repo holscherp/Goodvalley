@@ -218,6 +218,7 @@ def create_app():
         log_path    = _Path(f'/tmp/gv_job_{job_id}.log')
         status_path = _Path(f'/tmp/gv_job_{job_id}.status')
         bins_path   = _Path(f'/tmp/gv_bins_{job_id}.json')
+        pallets_path = _Path(f'/tmp/gv_pallets_{job_id}.json')
         scraper     = _Path(__file__).parent / 'scrape_pwarehouse.py'
 
         log_path.write_text('')
@@ -236,7 +237,7 @@ def create_app():
             return None
 
         def run():
-            env = {**os.environ, 'GV_NO_UPLOAD': '1', 'GV_OUTPUT': str(bins_path)}
+            env = {**os.environ, 'GV_NO_UPLOAD': '1', 'GV_OUTPUT': str(bins_path), 'GV_PALLETS_OUT': str(pallets_path)}
             proc = subprocess.Popen(
                 [sys.executable, str(scraper)],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -322,6 +323,56 @@ def create_app():
                 with open(log_path, 'a') as lf:
                     lf.write(f'✓ {added} nuevos, {updated} actualizados, {skipped} omitidos.\n')
                     lf.flush()
+
+                # ── Import pallets ─────────────────────────────────────────
+                if pallets_path.exists():
+                    try:
+                        from models import Pallet as _Pallet, HistoricoMovimiento as _HM
+                        from datetime import datetime as _dt
+                        pallets_data = _json.loads(pallets_path.read_text())
+                        with open(log_path, 'a') as lf:
+                            lf.write(f'► Importando {len(pallets_data)} pallets...\n')
+                            lf.flush()
+                        with _app.app_context():
+                            shipped_ots = {
+                                r[0] for r in db.session.query(_HM.ot)
+                                .filter(_HM.movimiento == 'EMBARQUE').all()
+                            }
+                            existing_p = {row[0] for row in db.session.query(_Pallet.tarja).all()}
+                            added_p = updated_p = 0
+                            for p in pallets_data:
+                                tarja = str(p.get('tarja') or '').strip()
+                                if not tarja:
+                                    continue
+                                fields = {
+                                    'ot':               str(p.get('ot') or '').strip(),
+                                    'customer':         p.get('customer') or '',
+                                    'caliber':          p.get('caliber') or '',
+                                    'drying':           p.get('drying') or '',
+                                    'weight_kg':        float(p.get('weight_kg') or 0),
+                                    'producto':         p.get('producto') or '',
+                                    'unidades':         p.get('unidades'),
+                                    'pallet_estado_ot': p.get('pallet_estado_ot'),
+                                    's_pallet_clase':   p.get('s_pallet_clase'),
+                                    'synced_at':        _dt.utcnow(),
+                                }
+                                if tarja in existing_p:
+                                    db.session.query(_Pallet).filter_by(tarja=tarja).update(
+                                        fields, synchronize_session=False)
+                                    updated_p += 1
+                                else:
+                                    db.session.add(_Pallet(tarja=tarja, **fields))
+                                    existing_p.add(tarja)
+                                    added_p += 1
+                            db.session.commit()
+                        with open(log_path, 'a') as lf:
+                            lf.write(f'✓ Pallets: {added_p} nuevos, {updated_p} actualizados.\n')
+                            lf.flush()
+                    except Exception as _ep:
+                        with open(log_path, 'a') as lf:
+                            lf.write(f'⚠ Error importando pallets: {_ep}\n')
+                            lf.flush()
+
                 status_path.write_text('done:0')
 
             except Exception as e:
@@ -2227,11 +2278,17 @@ def create_app():
         total_kg_all = sum(s['total_kg'] for s in saldos)
 
         q_init = request.args.get('q', '')
+        from models import Pallet
+        saldo_pallets = (Pallet.query
+                         .filter(Pallet.ot.in_(list(ots_with_embarque)))
+                         .order_by(Pallet.ot, Pallet.tarja)
+                         .all()) if ots_with_embarque else []
         return render_template('saldos.html',
                                saldos=saldos,
                                total_kg=total_kg_all,
                                total_ots=len(saldos),
-                               q_init=q_init)
+                               q_init=q_init,
+                               saldo_pallets=saldo_pallets,)
 
     # ── Import Histórico ──────────────────────────────────────────────────────
 
@@ -2518,10 +2575,18 @@ def create_app():
 
     @app.route('/pallets')
     def list_pallets():
-        from models import Pallet
-        pallets   = Pallet.query.order_by(Pallet.tarja).all()
+        from models import Pallet, HistoricoMovimiento
+        shipped_ots = {
+            r[0] for r in db.session.query(HistoricoMovimiento.ot)
+            .filter(HistoricoMovimiento.movimiento == 'EMBARQUE').all()
+        }
+        pallets   = Pallet.query.order_by(Pallet.ot, Pallet.tarja).all()
         last_sync = pallets[0].synced_at if pallets else None
-        return render_template('pallets.html', pallets=pallets, last_sync=last_sync)
+        return render_template('pallets.html',
+            pallets=pallets,
+            shipped_ots=shipped_ots,
+            last_sync=last_sync,
+        )
 
     # ── Rendimientos ──────────────────────────────────────────────────────────
 
@@ -3047,6 +3112,9 @@ def _migrate(db_obj):
             key   VARCHAR(80) PRIMARY KEY,
             value TEXT
         )""",
+        'ALTER TABLE pallets ADD COLUMN IF NOT EXISTS pallet_estado_ot VARCHAR(5)',
+        'ALTER TABLE pallets ADD COLUMN IF NOT EXISTS s_pallet_clase VARCHAR(30)',
+        'ALTER TABLE pallets ADD COLUMN IF NOT EXISTS unidades INTEGER',
     ]
     with db_obj.engine.connect() as conn:
         for sql in stmts:
