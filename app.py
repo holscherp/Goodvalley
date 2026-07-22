@@ -2467,13 +2467,28 @@ def create_app():
             })
 
         from sqlalchemy import insert as _sa_insert
+
+        # Only replace movements for OTs that appear in this file.
+        # OTs not in this file are left completely untouched.
+        new_ots = list({r['ot'] for r in records if r['ot']})
+        if new_ots:
+            (HistoricoMovimiento.query
+             .filter(HistoricoMovimiento.ot.in_(new_ots))
+             .delete(synchronize_session=False))
+        db.session.commit()
+
         db.session.execute(_sa_insert(HistoricoMovimiento), records)
         db.session.commit()
         n_rows = len(records)
 
-        # ── 2. Rebuild Proceso summaries ──────────────────────────────────
-        OrdenDeVenta.query.delete(synchronize_session=False)
-        Proceso.query.delete(synchronize_session=False)
+        # ── 2. Rebuild Proceso/OrdenDeVenta only for OTs in this file ─────
+        if new_ots:
+            (OrdenDeVenta.query
+             .filter(OrdenDeVenta.ot.in_(new_ots))
+             .delete(synchronize_session=False))
+            (Proceso.query
+             .filter(Proceso.ot.in_(new_ots))
+             .delete(synchronize_session=False))
         db.session.commit()
 
         proc_in_movs  = {'EGRESO A PROCESO'}
