@@ -1295,15 +1295,30 @@ def create_app():
                         _def_lo, _def_hi = int(_lo_s), int(_hi_s)
                     except (ValueError, AttributeError):
                         _def_lo = _def_hi = None
-                    caliber_f  = request.args.get('caliber_f') or ''
-                    u_lb_lo_f  = request.args.get('u_lb_lo_f', type=int) or _def_lo
-                    u_lb_hi_f  = request.args.get('u_lb_hi_f', type=int) or _def_hi
+                    caliber_f = request.args.get('caliber_f') or ''
+                    u_lb_lo_f = request.args.get('u_lb_lo_f', type=int) or _def_lo
+                    u_lb_hi_f = request.args.get('u_lb_hi_f', type=int) or _def_hi
                     if caliber_f:
                         q = q.filter(Bin.caliber == caliber_f)
-                    if u_lb_lo_f is not None:
-                        q = q.filter(Bin.u_lb >= float(u_lb_lo_f))
-                    if u_lb_hi_f is not None:
-                        q = q.filter(Bin.u_lb <= float(u_lb_hi_f))
+                    # For bins with u_lb NULL, fall back to matching caliber bucket
+                    if u_lb_lo_f is not None or u_lb_hi_f is not None:
+                        lo_f = float(u_lb_lo_f) if u_lb_lo_f is not None else 0
+                        hi_f = float(u_lb_hi_f) if u_lb_hi_f is not None else 9999
+                        _CAL_RANGES = {
+                            '20/30': (20, 30), '30/40': (30, 40), '40/50': (40, 50),
+                            '50/60': (50, 60), '60/70': (60, 70), '70/80': (70, 80),
+                            '80/90': (80, 90), '90/100': (90, 100),
+                            '100/120': (100, 120), '120/144': (120, 144),
+                            '144/170': (144, 170),
+                        }
+                        overlap_cals = [
+                            c for c, (blo, bhi) in _CAL_RANGES.items()
+                            if max(lo_f, blo) <= min(hi_f, bhi)
+                        ]
+                        q = q.filter(db.or_(
+                            db.and_(Bin.u_lb >= lo_f, Bin.u_lb <= hi_f),
+                            db.and_(Bin.u_lb.is_(None), Bin.caliber.in_(overlap_cals))
+                        ))
                 else:
                     caliber_f = request.args.get('caliber_f') or line.caliber
                     u_lb_f    = request.args.get('u_lb_f', type=int)
