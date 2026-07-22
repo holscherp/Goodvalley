@@ -408,6 +408,7 @@ def create_app():
                                 'contenedor': b.get('contenedor') or '',
                                 'producer_name': b.get('producer_name') or '',
                                 'temporada': b.get('temporada') or _temporada(bid),
+                                'status': 'available',
                             }, synchronize_session=False)
                             updated += 1
                         elif bid not in all_ids:
@@ -622,6 +623,7 @@ def create_app():
                                     'contenedor': b.get('contenedor') or '',
                                     'producer_name': b.get('producer_name') or '',
                                     'temporada': b.get('temporada') or _infer_temporada(bid),
+                                    'status': 'available',
                                 }, synchronize_session=False)
                                 updated += 1
                             elif bid not in all_ids:
@@ -1009,6 +1011,7 @@ def create_app():
                         'contenedor': b.get('contenedor') or '',
                         'producer_name': b.get('producer_name') or '',
                         'temporada': b.get('temporada') or _temporada(bid),
+                        'status': 'available',
                     }, synchronize_session=False)
                     updated += 1
                 elif bid not in all_ids:
