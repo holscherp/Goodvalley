@@ -743,36 +743,6 @@ def create_app():
                         lf.write(f'⚠ Error importando pallets: {_ep}\n')
                         lf.flush()
 
-            # ── Google Drive historico sync ────────────────────────────────
-            with open(log_path, 'a') as lf:
-                lf.write('► Buscando nuevo Histórico en Google Drive…\n')
-                lf.flush()
-            gd_file_id, gd_file_name, gd_bytes = _gdrive_download_latest(_app)
-            if gd_bytes and _historico_import_ref:
-                try:
-                    with open(log_path, 'a') as lf:
-                        lf.write(f'► Importando {gd_file_name}…\n')
-                        lf.flush()
-                    with _app.app_context():
-                        gd_rows, gd_procs, gd_odvs = _historico_import_ref(gd_bytes)
-                        from models import AppSetting as _GAS2
-                        gs = _GAS2.query.filter_by(key='gdrive_last_file_id').first()
-                        if gs:
-                            gs.value = gd_file_id
-                        else:
-                            db.session.add(_GAS2(key='gdrive_last_file_id', value=gd_file_id))
-                        db.session.commit()
-                    with open(log_path, 'a') as lf:
-                        lf.write(
-                            f'✓ Histórico: {gd_rows} movimientos, '
-                            f'{gd_procs} procesos, {gd_odvs} ODVs importados.\n'
-                        )
-                        lf.flush()
-                except Exception as _gde:
-                    with open(log_path, 'a') as lf:
-                        lf.write(f'⚠ Error importando Histórico: {_gde}\n')
-                        lf.flush()
-
             status_path.write_text('done:0')
 
         threading.Thread(target=run, daemon=True).start()
@@ -2798,9 +2768,6 @@ def create_app():
 
         return n_rows, len(proc_records), len(odv_records)
 
-    global _historico_import_ref
-    _historico_import_ref = _run_historico_import
-
     @app.route('/admin/import-historico', methods=['POST'])
     def import_historico():
         f = request.files.get('historico_file')
@@ -3245,60 +3212,6 @@ def _migrate(db_obj):
                     pass
 
 
-_historico_import_ref = None  # set by create_app() — callable from background threads
-
-
-def _gdrive_download_latest(flask_app):
-    """Check Google Drive folder for a newer historico .xlsx. Returns (file_id, name, bytes) or (None,None,None)."""
-    import json as _gj, io as _gio, os as _gos
-    creds_json = _gos.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON', '').strip()
-    folder_id  = _gos.environ.get('GOOGLE_DRIVE_FOLDER_ID', '').strip()
-    if not creds_json or not folder_id:
-        flask_app.logger.info('[gdrive] Omitiendo: GOOGLE_SERVICE_ACCOUNT_JSON o GOOGLE_DRIVE_FOLDER_ID no configurados')
-        return None, None, None
-    try:
-        from google.oauth2 import service_account as _gsa
-        from googleapiclient.discovery import build as _gbuild
-        from googleapiclient.http import MediaIoBaseDownload as _GMIBD
-        creds = _gsa.Credentials.from_service_account_info(
-            _gj.loads(creds_json),
-            scopes=['https://www.googleapis.com/auth/drive.readonly'],
-        )
-        svc = _gbuild('drive', 'v3', credentials=creds, cache_discovery=False)
-        results = svc.files().list(
-            q=(f"'{folder_id}' in parents and "
-               "mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and "
-               "trashed=false"),
-            orderBy='modifiedTime desc',
-            pageSize=1,
-            fields='files(id,name,modifiedTime)',
-        ).execute()
-        files = results.get('files', [])
-        if not files:
-            flask_app.logger.info('[gdrive] No se encontraron archivos .xlsx en la carpeta')
-            return None, None, None
-        f        = files[0]
-        file_id  = f['id']
-        file_name = f['name']
-        with flask_app.app_context():
-            from models import AppSetting as _GAS
-            last = _GAS.query.filter_by(key='gdrive_last_file_id').first()
-            if last and last.value == file_id:
-                flask_app.logger.info(f'[gdrive] Ya está actualizado: {file_name}')
-                return None, None, None
-        req = svc.files().get_media(fileId=file_id)
-        buf = _gio.BytesIO()
-        dl  = _GMIBD(buf, req)
-        done = False
-        while not done:
-            _, done = dl.next_chunk()
-        flask_app.logger.info(f'[gdrive] Descargado {file_name} ({len(buf.getvalue()):,} bytes)')
-        return file_id, file_name, buf.getvalue()
-    except Exception as _ge:
-        flask_app.logger.error(f'[gdrive] Error al descargar: {_ge}')
-        return None, None, None
-
-
 def _run_sync(flask_app):
     """Full pWarehouse sync: scrape + import bins + import pallets. Runs in a background thread."""
     import subprocess, sys, json as _json, datetime as _dt, uuid as _uuid2, os
@@ -3405,26 +3318,6 @@ def _run_sync(flask_app):
                 db.session.rollback()
                 flask_app.logger.error(f'[auto-sync] pallets import error: {e}')
 
-    # ── Google Drive historico sync ───────────────────────────────────────────
-    file_id, file_name, excel_bytes = _gdrive_download_latest(flask_app)
-    if excel_bytes and _historico_import_ref:
-        try:
-            with flask_app.app_context():
-                n_rows, n_procs, n_odvs = _historico_import_ref(excel_bytes)
-                flask_app.logger.info(
-                    f'[gdrive] Importado {file_name}: {n_rows} movimientos, '
-                    f'{n_procs} procesos, {n_odvs} ODVs'
-                )
-                from models import AppSetting as _AS2
-                s = _AS2.query.filter_by(key='gdrive_last_file_id').first()
-                if s:
-                    s.value = file_id
-                else:
-                    db.session.add(_AS2(key='gdrive_last_file_id', value=file_id))
-                db.session.commit()
-        except Exception as _ge2:
-            flask_app.logger.error(f'[gdrive] Error al importar: {_ge2}')
-
 
 app = create_app()
 
@@ -3436,7 +3329,7 @@ def _auto_sync_loop():
     _sched_time.sleep(120)  # 2-minute warm-up after startup
     while True:
         try:
-            app.logger.info('[auto-sync] Starting scheduled sync (pWarehouse + Google Drive)…')
+            app.logger.info('[auto-sync] Starting scheduled pWarehouse sync…')
             _run_sync(app)
         except Exception as _e:
             app.logger.error(f'[auto-sync scheduler] Unexpected error: {_e}')
