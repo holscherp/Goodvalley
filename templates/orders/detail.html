@@ -99,14 +99,12 @@
       {% endif %}
     </form>
     {% endif %}
-    {% if order.status in ('fulfilled', 'cancelled') %}
     <form method="post" action="{{ url_for('delete_order', order_id=order.id) }}" class="inline">
       <button class="btn btn-danger"
-              onclick="return confirm('Eliminar esta orden permanentemente. Esta acción no se puede deshacer. ¿Seguro?')">
+              onclick="return confirm('Eliminar esta orden permanentemente. Los bins asignados quedarán disponibles nuevamente. ¿Seguro?')">
         🗑 Eliminar orden
       </button>
     </form>
-    {% endif %}
   </div>
 </div>
 

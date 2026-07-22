@@ -408,7 +408,6 @@ def create_app():
                                 'contenedor': b.get('contenedor') or '',
                                 'producer_name': b.get('producer_name') or '',
                                 'temporada': b.get('temporada') or _temporada(bid),
-                                'status': 'available',
                             }, synchronize_session=False)
                             updated += 1
                         elif bid not in all_ids:
@@ -623,7 +622,6 @@ def create_app():
                                     'contenedor': b.get('contenedor') or '',
                                     'producer_name': b.get('producer_name') or '',
                                     'temporada': b.get('temporada') or _infer_temporada(bid),
-                                    'status': 'available',
                                 }, synchronize_session=False)
                                 updated += 1
                             elif bid not in all_ids:
@@ -1011,7 +1009,6 @@ def create_app():
                         'contenedor': b.get('contenedor') or '',
                         'producer_name': b.get('producer_name') or '',
                         'temporada': b.get('temporada') or _temporada(bid),
-                        'status': 'available',
                     }, synchronize_session=False)
                     updated += 1
                 elif bid not in all_ids:
@@ -1867,12 +1864,21 @@ def create_app():
 
     @app.route('/orders/<int:order_id>/delete', methods=['POST'])
     def delete_order(order_id):
-        from models import Order, Excedente
+        from models import Order, Allocation, Excedente
 
         order = Order.query.get_or_404(order_id)
-        if order.status not in ('fulfilled', 'cancelled'):
-            flash('Solo se pueden eliminar órdenes cumplidas o canceladas.', 'err')
-            return redirect(url_for('order_detail', order_id=order_id))
+
+        # Release any allocated bins/excedentes back to available before deleting
+        allocs = Allocation.query.filter_by(order_id=order_id).all()
+        for a in allocs:
+            if a.bin_id:
+                b = Bin.query.get(a.bin_id)
+                if b and b.status == 'allocated':
+                    b.status = 'available'
+            elif a.surplus_id:
+                s = Excedente.query.get(a.surplus_id)
+                if s and s.status == 'allocated':
+                    s.status = 'available'
 
         # Null out FK references from excedentes → order lines before cascade delete
         line_ids = [l.id for l in order.lines]
