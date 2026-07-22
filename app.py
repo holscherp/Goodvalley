@@ -2320,6 +2320,29 @@ def create_app():
         saldos.sort(key=lambda s: s['total_kg'], reverse=True)
         total_kg_all = sum(s['total_kg'] for s in saldos)
 
+        # Build humedad_by_ot from EGRESO A PROCESO rows (input bins carry the humidity reading)
+        saldo_ots = {s['base_ot'] for s in saldos}
+        saldo_sub_ots = {r.ot for s in saldos for r in s['tarjas']}
+        hum_rows = (HistoricoMovimiento.query
+                    .with_entities(HistoricoMovimiento.ot, HistoricoMovimiento.humedad)
+                    .filter(HistoricoMovimiento.movimiento == 'EGRESO A PROCESO')
+                    .filter(HistoricoMovimiento.ot.in_(list(saldo_sub_ots)))
+                    .filter(HistoricoMovimiento.humedad.isnot(None))
+                    .filter(HistoricoMovimiento.humedad > 0)
+                    .all())
+        from collections import defaultdict as _dd
+        _hum_buckets = _dd(list)
+        for row in hum_rows:
+            _hum_buckets[row.ot].append(row.humedad)
+        # Map sub-OT humedad back to base OT
+        humedad_by_ot = {}
+        for s in saldos:
+            vals = []
+            for r in s['tarjas']:
+                vals.extend(_hum_buckets.get(r.ot, []))
+            if vals:
+                humedad_by_ot[s['base_ot']] = round(sum(vals) / len(vals), 1)
+
         q_init = request.args.get('q', '')
 
         # Collect every tarja already shown in the Histórico saldos section
@@ -2344,7 +2367,8 @@ def create_app():
                                total_kg=total_kg_all,
                                total_ots=len(saldos),
                                q_init=q_init,
-                               saldo_pallets=saldo_pallets,)
+                               saldo_pallets=saldo_pallets,
+                               humedad_by_ot=humedad_by_ot,)
 
     # ── Import Histórico ──────────────────────────────────────────────────────
 
@@ -2858,7 +2882,7 @@ def _rebuild_summaries(df, WASTE_SERIES):
         neto_des  = df.loc[out_m & descarte_mask,  'NETO'].dropna()
         neto_con  = df.loc[out_m & contra_mask,    'NETO'].dropna()
         neto_emb  = df.loc[emb_m, 'NETO'].dropna()
-        hum_vals  = df.loc[out_m & ~waste_mask, 'HUMEDAD'].dropna() if 'HUMEDAD' in df.columns else None
+        hum_vals  = df.loc[in_m, 'HUMEDAD'].dropna() if 'HUMEDAD' in df.columns else None
 
         kg_entrada       = float(neto_in.sum())   if not neto_in.empty   else None
         kg_salida_bueno  = float(neto_good.sum()) if not neto_good.empty else None
@@ -2916,7 +2940,9 @@ def _rebuild_summaries(df, WASTE_SERIES):
         tp_vals  = df.loc[m, 'TIPOPROCESO'].dropna()
         te_vals  = df.loc[m, 'TEMPORADA'].dropna()
         io_vals  = df.loc[m, 'IDOT'].dropna()
-        hum_emb  = df.loc[m, 'HUMEDAD'].dropna() if 'HUMEDAD' in df.columns else None
+        all_ot_m = ot_col == ot
+        hum_emb  = df.loc[all_ot_m & (mov_col == 'EGRESO A PROCESO'), 'HUMEDAD'].dropna() if 'HUMEDAD' in df.columns else None
+        hum_emb  = hum_emb[hum_emb > 0] if hum_emb is not None else None
         odv_records.append({
             'ot': ot, 'idot': int(io_vals.iloc[0]) if not io_vals.empty else None,
             'temporada': str(int(te_vals.iloc[0])) if not te_vals.empty else None,
@@ -3020,19 +3046,19 @@ def _migrate(db_obj):
            FROM (
              SELECT ot, ROUND(AVG(humedad)::numeric, 1) AS h
              FROM historico_movimientos
-             WHERE movimiento = 'INGRESO DESDE PROCESO' AND humedad IS NOT NULL
+             WHERE movimiento = 'EGRESO A PROCESO' AND humedad IS NOT NULL AND humedad > 0
              GROUP BY ot
            ) sub
-           WHERE p.ot = sub.ot AND p.humedad_avg IS NULL""",
+           WHERE p.ot = sub.ot""",
         """UPDATE ordenes_de_venta o
            SET humedad_avg = sub.h
            FROM (
              SELECT ot, ROUND(AVG(humedad)::numeric, 1) AS h
              FROM historico_movimientos
-             WHERE movimiento = 'EMBARQUE' AND humedad IS NOT NULL
+             WHERE movimiento = 'EGRESO A PROCESO' AND humedad IS NOT NULL AND humedad > 0
              GROUP BY ot
            ) sub
-           WHERE o.ot = sub.ot AND o.humedad_avg IS NULL""",
+           WHERE o.ot = sub.ot""",
     ]
     with db_obj.engine.connect() as conn:
         for sql in stmts:

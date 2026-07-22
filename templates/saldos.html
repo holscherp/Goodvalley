@@ -70,6 +70,9 @@
     <td class="num" style="padding:8px 12px;font-weight:700;color:var(--purple)">
       {{ "{:,.1f}".format(s.total_kg) }} kg
     </td>
+    <td class="num" style="padding:8px 12px;font-weight:700;color:var(--purple)">
+      {% if s.base_ot in humedad_by_ot %}{{ "%.1f%%"|format(humedad_by_ot[s.base_ot]) }}{% else %}—{% endif %}
+    </td>
     <td></td>
   </tr>
   {% for r in s.tarjas %}
@@ -81,7 +84,7 @@
     <td style="font-size:12px">{{ r.producto or '—' }}</td>
     <td style="font-size:12px">{{ r.tipoproceso or '—' }}</td>
     <td class="num"><strong>{{ "{:,.1f}".format(r.neto) if r.neto else '—' }}</strong></td>
-    <td class="num">{{ "{:.1f}%".format(r.humedad) if r.humedad else '—' }}</td>
+    <td></td>
     <td style="font-size:12px">{{ r.bodega or '—' }}</td>
   </tr>
   {% endfor %}
