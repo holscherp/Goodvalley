@@ -2815,6 +2815,7 @@ def create_app():
                         HistoricoMovimiento.serie.in_(WASTE_SERIES),
                         HistoricoMovimiento.serie.ilike('%DESCARTE%')
                     ))
+                    .filter(~HistoricoMovimiento.producto.ilike('%CEREZA%'))
                     .order_by(HistoricoMovimiento.fecha)
                     .all())
 
