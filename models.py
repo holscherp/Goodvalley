@@ -500,6 +500,7 @@ class Proceso(db.Model):
     kg_contramuestra = db.Column(db.Float,   nullable=True)
     kg_embarcado    = db.Column(db.Float,    nullable=True)
     rendimiento_pct = db.Column(db.Float,    nullable=True)
+    humedad_avg     = db.Column(db.Float,    nullable=True)
     productores     = db.Column(db.Text,     nullable=True)   # comma-joined
     estado          = db.Column(db.String(40), nullable=True)
     imported_at     = db.Column(db.DateTime, default=datetime.utcnow)
@@ -542,6 +543,7 @@ class OrdenDeVenta(db.Model):
     cliente              = db.Column(db.String(150), nullable=True, index=True)
     calibres             = db.Column(db.String(200), nullable=True)   # comma-joined SERIE values
     kg_embarcado         = db.Column(db.Float,  nullable=True)
+    humedad_avg          = db.Column(db.Float,  nullable=True)
     fecha_primer_embarque = db.Column(db.DateTime, nullable=True)
     fecha_ultimo_embarque = db.Column(db.DateTime, nullable=True)
     proceso_id           = db.Column(db.Integer, db.ForeignKey('procesos.id'), nullable=True)

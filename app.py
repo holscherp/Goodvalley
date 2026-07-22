@@ -2100,6 +2100,7 @@ def create_app():
             all_inicio = [p.fecha_inicio for p in procs if p.fecha_inicio]
             all_fin    = [p.fecha_fin    for p in procs if p.fecha_fin]
             secados = {s.strip() for p in procs for s in (p.secado or '').split(',') if s.strip()}
+            hum_vals_p = [p.humedad_avg for p in procs if p.humedad_avg is not None]
             display_rows.append({
                 'base_ot':      base_ot,
                 'procs':        procs,
@@ -2108,6 +2109,7 @@ def create_app():
                 'kg_entrada':   kg_in,
                 'kg_salida_bueno': kg_out,
                 'rendimiento_pct': rend,
+                'humedad_avg':  round(sum(hum_vals_p) / len(hum_vals_p), 1) if hum_vals_p else None,
                 'estado':       estado,
                 'productores':  ', '.join(sorted(all_prods)),
                 'fecha_inicio': min(all_inicio) if all_inicio else None,
@@ -2175,6 +2177,7 @@ def create_app():
             fechas_u = [o.fecha_ultimo_embarque for o in ords if o.fecha_ultimo_embarque]
             proceso = next((o.proceso for o in ords if o.proceso), None)
             kg_salida = sum(o.proceso.kg_salida_bueno or 0 for o in ords if o.proceso) or None
+            hum_vals_o = [o.humedad_avg for o in ords if o.humedad_avg is not None]
             display_rows.append({
                 'base_ot':               base_ot,
                 'ords':                  ords,
@@ -2182,6 +2185,7 @@ def create_app():
                 'cliente':               ords[0].cliente,
                 'kg_embarcado':          kg,
                 'kg_salida_bueno':       kg_salida,
+                'humedad_avg':           round(sum(hum_vals_o) / len(hum_vals_o), 1) if hum_vals_o else None,
                 'fecha_primer_embarque': min(fechas_p) if fechas_p else None,
                 'fecha_ultimo_embarque': max(fechas_u) if fechas_u else None,
                 'proceso':               proceso,
@@ -2854,6 +2858,7 @@ def _rebuild_summaries(df, WASTE_SERIES):
         neto_des  = df.loc[out_m & descarte_mask,  'NETO'].dropna()
         neto_con  = df.loc[out_m & contra_mask,    'NETO'].dropna()
         neto_emb  = df.loc[emb_m, 'NETO'].dropna()
+        hum_vals  = df.loc[out_m & ~waste_mask, 'HUMEDAD'].dropna() if 'HUMEDAD' in df.columns else None
 
         kg_entrada       = float(neto_in.sum())   if not neto_in.empty   else None
         kg_salida_bueno  = float(neto_good.sum()) if not neto_good.empty else None
@@ -2889,6 +2894,7 @@ def _rebuild_summaries(df, WASTE_SERIES):
             'kg_salida_bueno': kg_salida_bueno, 'kg_carozo': kg_carozo,
             'kg_descarte': kg_descarte, 'kg_contramuestra': kg_contramuestra,
             'kg_embarcado': kg_embarcado, 'rendimiento_pct': rend,
+            'humedad_avg': round(float(hum_vals.mean()), 1) if hum_vals is not None and not hum_vals.empty else None,
             'productores': ', '.join(sorted({str(p).strip() for p in pr_vals if p})) or None,
             'estado': estado, 'imported_at': now,
         })
@@ -2903,13 +2909,14 @@ def _rebuild_summaries(df, WASTE_SERIES):
 
     for ot in emb_ots:
         m = (mov_col == 'EMBARQUE') & (ot_col == ot)
-        cl_vals = df.loc[m, 'CLIENTE'].dropna()
-        se_vals = df.loc[m, 'SERIE'].dropna().unique()
-        ne_vals = df.loc[m, 'NETO'].dropna()
-        fe_vals = df.loc[m, 'FECHA'].dropna()
-        tp_vals = df.loc[m, 'TIPOPROCESO'].dropna()
-        te_vals = df.loc[m, 'TEMPORADA'].dropna()
-        io_vals = df.loc[m, 'IDOT'].dropna()
+        cl_vals  = df.loc[m, 'CLIENTE'].dropna()
+        se_vals  = df.loc[m, 'SERIE'].dropna().unique()
+        ne_vals  = df.loc[m, 'NETO'].dropna()
+        fe_vals  = df.loc[m, 'FECHA'].dropna()
+        tp_vals  = df.loc[m, 'TIPOPROCESO'].dropna()
+        te_vals  = df.loc[m, 'TEMPORADA'].dropna()
+        io_vals  = df.loc[m, 'IDOT'].dropna()
+        hum_emb  = df.loc[m, 'HUMEDAD'].dropna() if 'HUMEDAD' in df.columns else None
         odv_records.append({
             'ot': ot, 'idot': int(io_vals.iloc[0]) if not io_vals.empty else None,
             'temporada': str(int(te_vals.iloc[0])) if not te_vals.empty else None,
@@ -2917,6 +2924,7 @@ def _rebuild_summaries(df, WASTE_SERIES):
             'cliente': str(cl_vals.iloc[0]).strip() if not cl_vals.empty else None,
             'calibres': ', '.join(str(s).strip() for s in se_vals if s) or None,
             'kg_embarcado': float(ne_vals.sum()) if not ne_vals.empty else None,
+            'humedad_avg': round(float(hum_emb.mean()), 1) if hum_emb is not None and not hum_emb.empty else None,
             'fecha_primer_embarque': fe_vals.min().to_pydatetime() if not fe_vals.empty else None,
             'fecha_ultimo_embarque': fe_vals.max().to_pydatetime() if not fe_vals.empty else None,
             'proceso_id': proc_id_by_ot.get(ot), 'imported_at': now,
@@ -3004,6 +3012,8 @@ def _migrate(db_obj):
         'ALTER TABLE pallets ADD COLUMN IF NOT EXISTS pallet_estado_ot VARCHAR(5)',
         'ALTER TABLE pallets ADD COLUMN IF NOT EXISTS s_pallet_clase VARCHAR(30)',
         'ALTER TABLE pallets ADD COLUMN IF NOT EXISTS unidades INTEGER',
+        'ALTER TABLE procesos ADD COLUMN IF NOT EXISTS humedad_avg FLOAT',
+        'ALTER TABLE ordenes_de_venta ADD COLUMN IF NOT EXISTS humedad_avg FLOAT',
     ]
     with db_obj.engine.connect() as conn:
         for sql in stmts:

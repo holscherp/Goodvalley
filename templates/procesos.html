@@ -40,6 +40,7 @@
     <th class="num">Kg Entrada</th>
     <th class="num">Kg Salida</th>
     <th class="num">Rend.</th>
+    <th class="num">Humedad</th>
     <th>Estado</th>
     <th>Inicio</th>
     <th>Fin</th>
@@ -75,6 +76,7 @@
         </span>
       {% else %}—{% endif %}
     </td>
+    <td class="num">{{ "%.1f%%"|format(r.humedad_avg) if r.humedad_avg else '—' }}</td>
     <td>
       <span class="pill" style="background:{% if r.estado == 'embarcado' %}#ede9fe{% elif r.estado == 'procesado' %}#d1fae5{% else %}#fef3c7{% endif %};
             color:{% if r.estado == 'embarcado' %}#5b21b6{% elif r.estado == 'procesado' %}#065f46{% else %}#92400e{% endif %}">

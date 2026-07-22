@@ -54,6 +54,7 @@
     <th>Producto</th>
     <th>Tipo</th>
     <th class="num">KG</th>
+    <th class="num">Humedad</th>
     <th>Bodega</th>
   </tr></thead>
   <tbody>
@@ -80,6 +81,7 @@
     <td style="font-size:12px">{{ r.producto or '—' }}</td>
     <td style="font-size:12px">{{ r.tipoproceso or '—' }}</td>
     <td class="num"><strong>{{ "{:,.1f}".format(r.neto) if r.neto else '—' }}</strong></td>
+    <td class="num">{{ "{:.1f}%".format(r.humedad) if r.humedad else '—' }}</td>
     <td style="font-size:12px">{{ r.bodega or '—' }}</td>
   </tr>
   {% endfor %}
