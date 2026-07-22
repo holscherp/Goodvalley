@@ -85,14 +85,16 @@
     <th>Calibre</th>
     <th>Producto</th>
     <th>Tipo</th>
+    <th>Cliente</th>
     <th class="num">KG</th>
     <th class="num">Humedad</th>
-    <th>Bodega</th>
+    <th>Secado</th>
+    <th>Motivo</th>
   </tr></thead>
   <tbody>
   {% for s in saldos %}
   <tr class="ot-header" data-ot="{{ s.base_ot }}" style="background:var(--lavender)">
-    <td colspan="6" style="padding:8px 12px;font-weight:700">
+    <td colspan="7" style="padding:8px 12px;font-weight:700">
       <a href="{{ url_for('proceso_detail', ot=s.base_ot) }}"
          style="color:var(--purple);text-decoration:none">{{ s.base_ot }}</a>
       <span style="font-weight:400;font-size:12px;color:var(--muted);margin-left:8px">
@@ -105,7 +107,7 @@
     <td class="num" style="padding:8px 12px;font-weight:700;color:var(--purple)">
       {% if s.base_ot in humedad_by_ot %}{{ "%.1f%%"|format(humedad_by_ot[s.base_ot]) }}{% else %}—{% endif %}
     </td>
-    <td></td>
+    <td colspan="2"></td>
   </tr>
   {% for r in s.tarjas %}
   <tr class="tarja-row" data-ot="{{ s.base_ot }}">
@@ -115,9 +117,11 @@
     <td class="mono">{{ r.serie or '—' }}</td>
     <td style="font-size:12px">{{ r.producto or '—' }}</td>
     <td style="font-size:12px">{{ r.tipoproceso or '—' }}</td>
+    <td style="font-size:12px">{{ r.cliente or '—' }}</td>
     <td class="num"><strong>{{ "{:,.1f}".format(r.neto) if r.neto else '—' }}</strong></td>
     <td></td>
-    <td style="font-size:12px">{{ r.bodega or '—' }}</td>
+    <td style="font-size:12px">{{ r.secado or '—' }}</td>
+    <td>—</td>
   </tr>
   {% endfor %}
   {% endfor %}
@@ -138,10 +142,13 @@
   <thead><tr>
     <th>OT</th>
     <th>Tarja</th>
+    <th>Fecha</th>
     <th>Calibre</th>
     <th>Producto</th>
+    <th>Tipo</th>
     <th>Cliente</th>
     <th class="num">KG</th>
+    <th class="num">Humedad</th>
     <th>Secado</th>
     <th>Motivo</th>
   </tr></thead>
@@ -153,7 +160,7 @@
       {% set ot_pallets = saldo_pallets | selectattr('ot', 'equalto', p.ot) | list %}
       {% set ot_kg = ot_pallets | sum(attribute='weight_kg') %}
       <tr class="ot-header pw-ot-header" data-pwot="{{ p.ot }}" style="background:#ede9fe">
-        <td colspan="5" style="padding:8px 12px;font-weight:700">
+        <td colspan="7" style="padding:8px 12px;font-weight:700">
           <span style="color:#5b21b6">{{ p.ot }}</span>
           <span style="font-weight:400;font-size:12px;color:var(--muted);margin-left:8px">
             {{ ot_pallets | length }} pallet{{ 's' if ot_pallets | length != 1 else '' }}
@@ -163,16 +170,19 @@
         <td class="num" style="padding:8px 12px;font-weight:700;color:#5b21b6">
           {{ "{:,.1f}".format(ot_kg) }} kg
         </td>
-        <td colspan="2"></td>
+        <td colspan="3"></td>
       </tr>
       {% for q in ot_pallets %}
       <tr class="tarja-row pw-row" data-pwot="{{ p.ot }}">
         <td class="mono" style="font-size:11px;color:var(--muted)">{{ q.ot }}</td>
         <td class="mono" style="font-size:12px">{{ q.tarja or '—' }}</td>
+        <td class="mono" style="font-size:12px">—</td>
         <td class="mono">{{ q.caliber or '—' }}</td>
         <td style="font-size:12px">{{ q.producto or '—' }}</td>
+        <td style="font-size:12px">—</td>
         <td style="font-size:12px">{{ q.customer or '—' }}</td>
         <td class="num"><strong>{{ "{:,.1f}".format(q.weight_kg or 0) }}</strong></td>
+        <td></td>
         <td>{% if q.drying %}<span class="pill pill-{{ q.drying }}">{{ q.drying_label }}</span>{% else %}—{% endif %}</td>
         <td>
           {% if q.pallet_estado_ot == 'F' %}
