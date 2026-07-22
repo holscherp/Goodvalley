@@ -80,6 +80,8 @@ def _transform_rows(raw_rows):
         weight = float(_rv(row, 2) or 0)
         hum_raw = _rv(row, 5)
         humedad = float(hum_raw) if hum_raw else None
+        u_lb_raw = _rv(row, 6)
+        u_lb = float(u_lb_raw) if u_lb_raw and float(u_lb_raw) > 0 else None
         cont = str(_rv(row, 7) or '').strip()
         caliber = None
         serie = _rv(row, 15)
@@ -111,6 +113,7 @@ def _transform_rows(raw_rows):
             'bin_identifier': tarja_str,
             'producto': producto,
             'caliber': caliber or '',
+            'u_lb': u_lb,
             'drying': drying,
             'weight_kg': weight,
             'humedad': humedad if humedad and humedad > 0 else None,

@@ -172,6 +172,12 @@ def fetch_bins(sess, sid, url, page_size=2000):
         except (ValueError, TypeError):
             weight = 0.0
 
+        u_lb_raw = _rv(row, 6)
+        try:
+            u_lb = float(u_lb_raw) if u_lb_raw and float(u_lb_raw) > 0 else None
+        except (ValueError, TypeError):
+            u_lb = None
+
         # Caliber
         caliber = None
         serie = _rv(row, 15)
@@ -199,6 +205,7 @@ def fetch_bins(sess, sid, url, page_size=2000):
             'bin_identifier': tarja_str,
             'producto':       producto,
             'caliber':        caliber or '',
+            'u_lb':           u_lb,
             'drying':         drying,
             'weight_kg':      weight,
             'humedad':        None,
