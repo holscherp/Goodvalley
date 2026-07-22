@@ -2377,123 +2377,7 @@ def create_app():
 
     @app.route('/saldos')
     def list_saldos():
-        from models import HistoricoMovimiento, WASTE_SERIES
-        from collections import OrderedDict as _OD
-
-        # All non-waste tarjas that came out of processing.
-        # REPALETIZAJE and INGRESO REEMBALAJE are output tarjas from repackaging —
-        # their originals were already consumed via EGRESO A REPALETIZAJE / EGRESO REEMBALAJE.
-        produced = (HistoricoMovimiento.query
-                    .filter(HistoricoMovimiento.movimiento.in_([
-                        'INGRESO DESDE PROCESO', 'REPALETIZAJE', 'INGRESO REEMBALAJE'
-                    ]))
-                    .filter(
-                        ~db.or_(
-                            HistoricoMovimiento.serie.in_(WASTE_SERIES),
-                            HistoricoMovimiento.serie.ilike('%DESCARTE%')
-                        )
-                    )
-                    .order_by(HistoricoMovimiento.fecha)
-                    .all())
-
-        # Tarjas that were shipped or merged (EMBARQUE / EGRESO A REPALETIZAJE / EGRESO REEMBALAJE)
-        consumed_rows = (HistoricoMovimiento.query
-                         .filter(HistoricoMovimiento.movimiento.in_([
-                             'EMBARQUE', 'EGRESO A REPALETIZAJE', 'EGRESO REEMBALAJE'
-                         ]))
-                         .all())
-
-        # Build {exact_ot: {tarja, ...}} for consumed lookup
-        # Also track which exact OTs have at least one real EMBARQUE
-        consumed_by_ot = {}
-        ots_with_embarque = set()
-        for r in consumed_rows:
-            if r.tarja:
-                consumed_by_ot.setdefault(r.ot, set()).add(r.tarja.strip())
-            if r.movimiento == 'EMBARQUE':
-                ots_with_embarque.add(r.ot)
-
-        # Group produced by base OT; find leftover (produced but not consumed)
-        groups = _OD()
-        for r in produced:
-            groups.setdefault(_ot_base(r.ot), []).append(r)
-
-        saldos = []
-        for base_ot, prod_rows in groups.items():
-            # If nothing was ever shipped for any sub-OT, it's not a saldo —
-            # it's just an order that hasn't shipped yet at all
-            sub_ots = {r.ot for r in prod_rows}
-            if not any(ot in ots_with_embarque for ot in sub_ots):
-                continue
-
-            leftover = []
-            for r in prod_rows:
-                tarja = (r.tarja or '').strip()
-                ot_consumed = consumed_by_ot.get(r.ot, set())
-                if not tarja or tarja not in ot_consumed:
-                    leftover.append(r)
-            if leftover:
-                total_kg = sum(r.neto or 0 for r in leftover)
-                saldos.append({
-                    'base_ot':  base_ot,
-                    'tarjas':   sorted(leftover, key=lambda r: r.fecha or datetime.min),
-                    'total_kg': total_kg,
-                    'n_tarjas': len(leftover),
-                })
-
-        saldos.sort(key=lambda s: s['total_kg'], reverse=True)
-        total_kg_all = sum(s['total_kg'] for s in saldos)
-
-        # Build humedad_by_ot from EGRESO A PROCESO rows (input bins carry the humidity reading)
-        saldo_ots = {s['base_ot'] for s in saldos}
-        saldo_sub_ots = {r.ot for s in saldos for r in s['tarjas']}
-        hum_rows = (HistoricoMovimiento.query
-                    .with_entities(HistoricoMovimiento.ot, HistoricoMovimiento.humedad)
-                    .filter(HistoricoMovimiento.movimiento == 'EGRESO A PROCESO')
-                    .filter(HistoricoMovimiento.ot.in_(list(saldo_sub_ots)))
-                    .filter(HistoricoMovimiento.humedad.isnot(None))
-                    .filter(HistoricoMovimiento.humedad > 0)
-                    .all())
-        from collections import defaultdict as _dd
-        _hum_buckets = _dd(list)
-        for row in hum_rows:
-            _hum_buckets[row.ot].append(row.humedad)
-        # Map sub-OT humedad back to base OT
-        humedad_by_ot = {}
-        for s in saldos:
-            vals = []
-            for r in s['tarjas']:
-                vals.extend(_hum_buckets.get(r.ot, []))
-            if vals:
-                humedad_by_ot[s['base_ot']] = round(sum(vals) / len(vals), 1)
-
-        q_init = request.args.get('q', '')
-
-        # Collect every tarja already shown in the Histórico saldos section
-        historico_tarjas = set()
-        for s in saldos:
-            for r in s['tarjas']:
-                if r.tarja:
-                    historico_tarjas.add(r.tarja.strip())
-
-        from models import Pallet
-        saldo_pallets = [
-            p for p in (
-                Pallet.query
-                .filter(Pallet.ot.in_(list(ots_with_embarque)))
-                .filter(Pallet.weight_kg > 0)
-                .order_by(Pallet.ot, Pallet.tarja)
-                .all()
-            ) if p.tarja not in historico_tarjas
-        ] if ots_with_embarque else []
-        return render_template('saldos.html',
-                               saldos=saldos,
-                               total_kg=total_kg_all,
-                               total_ots=len(saldos),
-                               q_init=q_init,
-                               saldo_pallets=saldo_pallets,
-                               humedad_by_ot=humedad_by_ot,)
-
+        return redirect(url_for('list_pallets'))
     # ── Import Histórico ──────────────────────────────────────────────────────
 
     def _run_historico_import(excel_bytes):
@@ -2825,19 +2709,123 @@ def create_app():
         _t2.Thread(target=lambda: _run_sync(_app), daemon=True).start()
         return {'ok': True, 'status': 'sync started'}, 202
 
+
     @app.route('/pallets')
     def list_pallets():
-        from models import Pallet, HistoricoMovimiento
-        shipped_ots = {
+        from models import Pallet, HistoricoMovimiento, WASTE_SERIES
+        from collections import OrderedDict as _OD, defaultdict as _dd
+
+        # Which OTs have ever had an EMBARQUE
+        ots_with_embarque = {
             r[0] for r in db.session.query(HistoricoMovimiento.ot)
             .filter(HistoricoMovimiento.movimiento == 'EMBARQUE').all()
         }
-        pallets   = Pallet.query.order_by(Pallet.ot, Pallet.tarja).all()
-        last_sync = pallets[0].synced_at if pallets else None
+
+        # ── Tab 1: Saldos (historico part) ───────────────────────────────────
+        produced = (HistoricoMovimiento.query
+                    .filter(HistoricoMovimiento.movimiento.in_([
+                        'INGRESO DESDE PROCESO', 'REPALETIZAJE', 'INGRESO REEMBALAJE'
+                    ]))
+                    .filter(~db.or_(
+                        HistoricoMovimiento.serie.in_(WASTE_SERIES),
+                        HistoricoMovimiento.serie.ilike('%DESCARTE%')
+                    ))
+                    .order_by(HistoricoMovimiento.fecha)
+                    .all())
+
+        consumed_rows = (HistoricoMovimiento.query
+                         .filter(HistoricoMovimiento.movimiento.in_([
+                             'EMBARQUE', 'EGRESO A REPALETIZAJE', 'EGRESO REEMBALAJE'
+                         ]))
+                         .all())
+        consumed_by_ot = {}
+        for r in consumed_rows:
+            if r.tarja:
+                consumed_by_ot.setdefault(r.ot, set()).add(r.tarja.strip())
+
+        groups = _OD()
+        for r in produced:
+            groups.setdefault(_ot_base(r.ot), []).append(r)
+
+        saldos = []
+        for base_ot, prod_rows in groups.items():
+            sub_ots = {r.ot for r in prod_rows}
+            if not any(ot in ots_with_embarque for ot in sub_ots):
+                continue
+            leftover = []
+            for r in prod_rows:
+                tarja = (r.tarja or '').strip()
+                if not tarja or tarja not in consumed_by_ot.get(r.ot, set()):
+                    leftover.append(r)
+            if leftover:
+                saldos.append({
+                    'base_ot':  base_ot,
+                    'tarjas':   sorted(leftover, key=lambda r: r.fecha or datetime.min),
+                    'total_kg': sum(r.neto or 0 for r in leftover),
+                    'n_tarjas': len(leftover),
+                })
+        saldos.sort(key=lambda s: s['total_kg'], reverse=True)
+        total_kg_historico = sum(s['total_kg'] for s in saldos)
+
+        # Humidity per OT
+        saldo_sub_ots = {r.ot for s in saldos for r in s['tarjas']}
+        hum_rows = (HistoricoMovimiento.query
+                    .with_entities(HistoricoMovimiento.ot, HistoricoMovimiento.humedad)
+                    .filter(HistoricoMovimiento.movimiento == 'EGRESO A PROCESO')
+                    .filter(HistoricoMovimiento.ot.in_(list(saldo_sub_ots)))
+                    .filter(HistoricoMovimiento.humedad.isnot(None))
+                    .filter(HistoricoMovimiento.humedad > 0)
+                    .all()) if saldo_sub_ots else []
+        hum_buckets = _dd(list)
+        for row in hum_rows:
+            hum_buckets[row.ot].append(row.humedad)
+        humedad_by_ot = {}
+        for s in saldos:
+            vals = [v for r in s['tarjas'] for v in hum_buckets.get(r.ot, [])]
+            if vals:
+                humedad_by_ot[s['base_ot']] = round(sum(vals) / len(vals), 1)
+
+        # pWarehouse pallets for OTs with embarque not already in historico saldos
+        historico_tarjas = {r.tarja.strip() for s in saldos for r in s['tarjas'] if r.tarja}
+        saldo_pallets = ([
+            p for p in (
+                Pallet.query
+                .filter(Pallet.ot.in_(list(ots_with_embarque)))
+                .filter(Pallet.weight_kg > 0)
+                .order_by(Pallet.ot, Pallet.tarja)
+                .all()
+            ) if p.tarja not in historico_tarjas
+        ] if ots_with_embarque else [])
+
+        # ── Tab 2: Pendientes (pWarehouse pallets for OTs with no embarque) ──
+        all_pallets = (Pallet.query
+                       .filter(Pallet.weight_kg > 0)
+                       .order_by(Pallet.ot, Pallet.tarja)
+                       .all())
+
+        pendientes_by_ot = _OD()
+        for p in all_pallets:
+            if (p.ot or '') not in ots_with_embarque:
+                pendientes_by_ot.setdefault(p.ot or '—', []).append(p)
+
+        pendientes_groups = sorted([
+            {'ot': ot, 'pallets': ps, 'total_kg': sum(p.weight_kg or 0 for p in ps)}
+            for ot, ps in pendientes_by_ot.items()
+        ], key=lambda g: g['total_kg'], reverse=True)
+
+        last_sync = all_pallets[0].synced_at if all_pallets else None
+        q_init    = request.args.get('q', '')
+
         return render_template('pallets.html',
-            pallets=pallets,
-            shipped_ots=shipped_ots,
+            saldos=saldos,
+            total_kg_historico=total_kg_historico,
+            total_ots=len(saldos),
+            saldo_pallets=saldo_pallets,
+            total_kg_pallets=sum(p.weight_kg or 0 for p in saldo_pallets),
+            humedad_by_ot=humedad_by_ot,
+            pendientes_groups=pendientes_groups,
             last_sync=last_sync,
+            q_init=q_init,
         )
 
     # ── Rendimientos ──────────────────────────────────────────────────────────

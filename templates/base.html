@@ -25,10 +25,8 @@
        class="{{ 'on' if request.endpoint in ('list_ordenes_de_venta','orden_de_venta_detail') else '' }}">Embarques</a>
     <a href="{{ url_for('list_descartes') }}"
        class="{{ 'on' if request.endpoint == 'list_descartes' else '' }}">Descartes</a>
-    <a href="{{ url_for('list_saldos') }}"
-       class="{{ 'on' if request.endpoint == 'list_saldos' else '' }}">Saldos</a>
     <a href="{{ url_for('list_pallets') }}"
-       class="{{ 'on' if request.endpoint == 'list_pallets' else '' }}">Pallets en Bodega</a>
+       class="{{ 'on' if request.endpoint in ('list_pallets','list_saldos') else '' }}">Pallets en Bodega</a>
     <a href="{{ url_for('rendimientos') }}"
        class="{{ 'on' if request.endpoint and 'rendimiento' in request.endpoint else '' }}">Rendimientos</a>
   </nav>

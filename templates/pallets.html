@@ -2,175 +2,318 @@
 {% block title %}Pallets en Bodega · Goodvalley{% endblock %}
 
 {% block content %}
-{% set saldo_count = namespace(n=0, kg=0) %}
-{% set activo_count = namespace(n=0, kg=0) %}
-{% for p in pallets %}{% if p.weight_kg and p.weight_kg > 0 %}
-  {% if p.ot in shipped_ots %}
-    {% set saldo_count.n = saldo_count.n + 1 %}
-    {% set saldo_count.kg = saldo_count.kg + (p.weight_kg or 0) %}
-  {% else %}
-    {% set activo_count.n = activo_count.n + 1 %}
-    {% set activo_count.kg = activo_count.kg + (p.weight_kg or 0) %}
-  {% endif %}
-{% endif %}{% endfor %}
+{% set pallet_kg = saldo_pallets | sum(attribute='weight_kg') if saldo_pallets else 0 %}
+{% set pend_count = pendientes_groups | sum(attribute='pallets') | list | length if pendientes_groups else 0 %}
+{% set pend_kg    = pendientes_groups | sum(attribute='total_kg') if pendientes_groups else 0 %}
 
-<div class="row-between">
+<div class="row-between" style="margin-bottom:20px">
   <div>
     <h1>Pallets en Bodega</h1>
-    <p class="muted">
-      Producto terminado disponible en bodega.
-      {% if last_sync %}· última sync {{ last_sync.strftime('%d-%m-%Y %H:%M') }}{% endif %}
-    </p>
+    <p class="muted">Producto terminado disponible.{% if last_sync %} · última sync {{ last_sync.strftime('%d-%m-%Y %H:%M') }}{% endif %}</p>
   </div>
   <div class="cards" style="margin:0;gap:10px">
-    <div class="card" style="min-width:0;padding:12px 18px">
-      <div class="big">{{ pallets|length }}</div>
-      <div class="lbl">Total pallets</div>
+    <div class="card" style="padding:12px 18px">
+      <div class="big">{{ total_ots }}</div>
+      <div class="lbl">OTs con Saldo</div>
     </div>
-    <div class="card" style="min-width:0;padding:12px 18px;border:1px solid #f59e0b">
-      <div class="big" style="color:#92400e">{{ saldo_count.n }}</div>
-      <div class="lbl">En saldo</div>
+    <div class="card" style="padding:12px 18px">
+      <div class="big" style="font-size:1.5rem">{{ "{:,.0f}".format(total_kg_historico) }}</div>
+      <div class="lbl">KG Histórico</div>
     </div>
-    <div class="card" style="min-width:0;padding:12px 18px">
-      <div class="big">{{ activo_count.n }}</div>
-      <div class="lbl">Activos</div>
+    {% if saldo_pallets %}
+    <div class="card" style="padding:12px 18px">
+      <div class="big" style="font-size:1.5rem">{{ "{:,.0f}".format(pallet_kg) }}</div>
+      <div class="lbl">KG pWarehouse</div>
     </div>
+    {% endif %}
+    {% if pendientes_groups %}
+    <div class="card" style="padding:12px 18px;border-color:#f59e0b">
+      <div class="big" style="font-size:1.5rem;color:#92400e">{{ "{:,.0f}".format(pend_kg) }}</div>
+      <div class="lbl">KG Pendientes</div>
+    </div>
+    {% endif %}
   </div>
 </div>
 
-{% if pallets %}
+{# ── Search ── #}
+<div style="margin-bottom:12px">
+  <input id="pib-search" type="text" placeholder="Buscar OT, tarja, calibre, cliente…"
+         value="{{ q_init }}"
+         style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
+                background:var(--card);color:var(--fg);font-size:13px;width:280px"
+         oninput="pibFilter(this.value)">
+</div>
 
 {# ── Tab bar ── #}
-<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:16px">
-  <button id="tab-btn-saldo" onclick="switchTab('saldo')"
+<div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:20px">
+  <button id="tab-btn-saldos" onclick="pibTab('saldos')"
           style="padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer;
                  background:none;border:none;border-bottom:3px solid var(--purple);
                  color:var(--purple);margin-bottom:-2px">
-    Saldos <span style="font-size:11px;font-weight:400;color:var(--muted)">({{ saldo_count.n }})</span>
+    Saldos
+    <span style="font-size:11px;font-weight:400;color:var(--muted)">({{ total_ots }} OTs)</span>
   </button>
-  <button id="tab-btn-activo" onclick="switchTab('activo')"
+  <button id="tab-btn-pendientes" onclick="pibTab('pendientes')"
           style="padding:8px 22px;font-size:13px;font-weight:700;cursor:pointer;
                  background:none;border:none;border-bottom:3px solid transparent;
                  color:var(--muted);margin-bottom:-2px">
-    Activos <span style="font-size:11px;font-weight:400">({{ activo_count.n }})</span>
+    Pendientes
+    <span style="font-size:11px;font-weight:400">({{ pendientes_groups | length }} OTs)</span>
   </button>
 </div>
 
-{# ── Search bar ── #}
-<div style="margin-bottom:12px">
-  <input id="pallet-search" type="text" placeholder="Buscar tarja, OT, cliente, calibre…"
-         style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
-                background:var(--card);color:var(--fg);font-size:13px;width:280px"
-         oninput="filterPallets(this.value)">
-</div>
+{# ════════════════════════════════════════════════════════════════
+   TAB 1 — SALDOS
+   ════════════════════════════════════════════════════════════════ #}
+<div id="panel-saldos">
 
-{# ── Saldos table ── #}
-<div id="panel-saldo">
-<table class="grid tight" id="table-saldo">
+{% if saldos %}
+<h2 style="font-size:.75rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+           margin:0 0 8px;display:flex;align-items:center;gap:8px">
+  Histórico
+  <span style="background:var(--lavender);color:var(--purple);border-radius:4px;
+               padding:2px 8px;font-size:10px;font-weight:700;letter-spacing:.04em">
+    {{ total_ots }} OTs · {{ "{:,.0f}".format(total_kg_historico) }} kg
+  </span>
+</h2>
+<table class="grid tight" id="tbl-hist" style="margin-bottom:32px">
   <thead><tr>
-    <th>Tarja</th>
     <th>OT</th>
-    <th>Motivo</th>
-    <th>Cliente</th>
-    <th>Producto</th>
+    <th>Tarja</th>
+    <th>Fecha</th>
     <th>Calibre</th>
-    <th>Clase</th>
-    <th>Secado</th>
-    <th>Temp.</th>
-    <th class="num">kg</th>
-    <th class="num">Cajas</th>
+    <th>Producto</th>
+    <th>Tipo</th>
+    <th class="num">KG</th>
+    <th class="num">Humedad</th>
+    <th>Bodega</th>
   </tr></thead>
   <tbody>
-  {% for p in pallets %}{% if p.ot in shipped_ots and p.weight_kg and p.weight_kg > 0 %}
-  <tr>
-    <td class="mono">{{ p.tarja }}</td>
-    <td class="mono">{{ p.ot or '—' }}</td>
-    <td>
-      {% if p.pallet_estado_ot == 'F' %}
-        <span class="pill" style="background:#fee2e2;color:#b91c1c;font-size:11px">No cumplió</span>
-      {% elif p.pallet_estado_ot == 'T' %}
-        <span class="pill" style="background:#d1fae5;color:#065f46;font-size:11px">Excedente</span>
-      {% else %}
-        <span class="pill" style="background:#fef3c7;color:#92400e;font-size:11px">Saldo</span>
-      {% endif %}
+  {% for s in saldos %}
+  <tr class="ot-header" data-ot="{{ s.base_ot }}" style="background:var(--lavender)">
+    <td colspan="6" style="padding:8px 12px;font-weight:700">
+      <a href="{{ url_for('proceso_detail', ot=s.base_ot) }}"
+         style="color:var(--purple);text-decoration:none">{{ s.base_ot }}</a>
+      <span style="font-weight:400;font-size:12px;color:var(--muted);margin-left:8px">
+        {{ s.n_tarjas }} tarja{{ 's' if s.n_tarjas != 1 else '' }}
+      </span>
     </td>
-    <td>{{ p.customer or '—' }}</td>
-    <td style="font-size:12px">{{ p.producto or '—' }}</td>
-    <td>{{ p.caliber or '—' }}</td>
-    <td style="font-size:12px">{{ p.s_pallet_clase or '—' }}</td>
-    <td>{% if p.drying %}<span class="pill pill-{{ p.drying }}">{{ p.drying_label }}</span>{% else %}—{% endif %}</td>
-    <td>{{ p.temporada or '—' }}</td>
-    <td class="num"><strong>{{ "{:,.1f}".format(p.weight_kg or 0) }}</strong></td>
-    <td class="num">{{ p.unidades or '—' }}</td>
+    <td class="num" style="padding:8px 12px;font-weight:700;color:var(--purple)">
+      {{ "{:,.1f}".format(s.total_kg) }} kg
+    </td>
+    <td class="num" style="padding:8px 12px;font-weight:700;color:var(--purple)">
+      {% if s.base_ot in humedad_by_ot %}{{ "%.1f%%"|format(humedad_by_ot[s.base_ot]) }}{% else %}—{% endif %}
+    </td>
+    <td></td>
   </tr>
-  {% endif %}{% endfor %}
+  {% for r in s.tarjas %}
+  <tr class="tarja-row" data-ot="{{ s.base_ot }}">
+    <td class="mono" style="font-size:11px;color:var(--muted)">{{ r.ot }}</td>
+    <td class="mono" style="font-size:12px">{{ r.tarja or '—' }}</td>
+    <td class="mono" style="font-size:12px">{{ r.fecha_str or '—' }}</td>
+    <td class="mono">{{ r.serie or '—' }}</td>
+    <td style="font-size:12px">{{ r.producto or '—' }}</td>
+    <td style="font-size:12px">{{ r.tipoproceso or '—' }}</td>
+    <td class="num"><strong>{{ "{:,.1f}".format(r.neto) if r.neto else '—' }}</strong></td>
+    <td></td>
+    <td style="font-size:12px">{{ r.bodega or '—' }}</td>
+  </tr>
+  {% endfor %}
+  {% endfor %}
   </tbody>
 </table>
-</div>
+{% endif %}
 
-{# ── Activos table ── #}
-<div id="panel-activo" style="display:none">
-<table class="grid tight" id="table-activo">
+{% if saldo_pallets %}
+<h2 style="font-size:.75rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);
+           margin:0 0 8px;display:flex;align-items:center;gap:8px">
+  pWarehouse · Saldos
+  <span style="background:#ede9fe;color:#5b21b6;border-radius:4px;
+               padding:2px 8px;font-size:10px;font-weight:700;letter-spacing:.04em">
+    {{ saldo_pallets | length }} pallets · {{ "{:,.0f}".format(pallet_kg) }} kg
+  </span>
+</h2>
+<table class="grid tight" id="tbl-pw">
   <thead><tr>
-    <th>Tarja</th>
     <th>OT</th>
-    <th>Cliente</th>
-    <th>Producto</th>
+    <th>Tarja</th>
     <th>Calibre</th>
-    <th>Clase</th>
+    <th>Producto</th>
+    <th>Cliente</th>
+    <th class="num">KG</th>
     <th>Secado</th>
-    <th>Temp.</th>
-    <th class="num">kg</th>
-    <th class="num">Cajas</th>
+    <th>Motivo</th>
   </tr></thead>
   <tbody>
-  {% for p in pallets %}{% if p.ot not in shipped_ots and p.weight_kg and p.weight_kg > 0 %}
-  <tr>
-    <td class="mono">{{ p.tarja }}</td>
-    <td class="mono">{{ p.ot or '—' }}</td>
-    <td>{{ p.customer or '—' }}</td>
-    <td style="font-size:12px">{{ p.producto or '—' }}</td>
-    <td>{{ p.caliber or '—' }}</td>
-    <td style="font-size:12px">{{ p.s_pallet_clase or '—' }}</td>
-    <td>{% if p.drying %}<span class="pill pill-{{ p.drying }}">{{ p.drying_label }}</span>{% else %}—{% endif %}</td>
-    <td>{{ p.temporada or '—' }}</td>
-    <td class="num"><strong>{{ "{:,.1f}".format(p.weight_kg or 0) }}</strong></td>
-    <td class="num">{{ p.unidades or '—' }}</td>
-  </tr>
-  {% endif %}{% endfor %}
+  {% set seen_ots = namespace(v=[]) %}
+  {% for p in saldo_pallets %}
+    {% if p.ot not in seen_ots.v %}
+      {% set seen_ots.v = seen_ots.v + [p.ot] %}
+      {% set ot_pallets = saldo_pallets | selectattr('ot', 'equalto', p.ot) | list %}
+      {% set ot_kg = ot_pallets | sum(attribute='weight_kg') %}
+      <tr class="ot-header pw-ot-header" data-pwot="{{ p.ot }}" style="background:#ede9fe">
+        <td colspan="5" style="padding:8px 12px;font-weight:700">
+          <span style="color:#5b21b6">{{ p.ot }}</span>
+          <span style="font-weight:400;font-size:12px;color:var(--muted);margin-left:8px">
+            {{ ot_pallets | length }} pallet{{ 's' if ot_pallets | length != 1 else '' }}
+          </span>
+          {% if p.customer %}<span style="font-size:12px;color:var(--muted);margin-left:8px">· {{ p.customer }}</span>{% endif %}
+        </td>
+        <td class="num" style="padding:8px 12px;font-weight:700;color:#5b21b6">
+          {{ "{:,.1f}".format(ot_kg) }} kg
+        </td>
+        <td colspan="2"></td>
+      </tr>
+      {% for q in ot_pallets %}
+      <tr class="tarja-row pw-row" data-pwot="{{ p.ot }}">
+        <td class="mono" style="font-size:11px;color:var(--muted)">{{ q.ot }}</td>
+        <td class="mono" style="font-size:12px">{{ q.tarja or '—' }}</td>
+        <td class="mono">{{ q.caliber or '—' }}</td>
+        <td style="font-size:12px">{{ q.producto or '—' }}</td>
+        <td style="font-size:12px">{{ q.customer or '—' }}</td>
+        <td class="num"><strong>{{ "{:,.1f}".format(q.weight_kg or 0) }}</strong></td>
+        <td>{% if q.drying %}<span class="pill pill-{{ q.drying }}">{{ q.drying_label }}</span>{% else %}—{% endif %}</td>
+        <td>
+          {% if q.pallet_estado_ot == 'F' %}
+            <span class="pill" style="background:#fee2e2;color:#b91c1c;font-size:11px">No cumplió</span>
+          {% elif q.pallet_estado_ot == 'T' %}
+            <span class="pill" style="background:#d1fae5;color:#065f46;font-size:11px">Excedente</span>
+          {% else %}
+            <span class="pill" style="background:#fef3c7;color:#92400e;font-size:11px">Saldo</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    {% endif %}
+  {% endfor %}
   </tbody>
 </table>
-</div>
+{% endif %}
 
-<script>
-var activeTab = 'saldo';
-
-function switchTab(tab) {
-  activeTab = tab;
-  ['saldo', 'activo'].forEach(function(t) {
-    var btn = document.getElementById('tab-btn-' + t);
-    var panel = document.getElementById('panel-' + t);
-    var active = (t === tab);
-    btn.style.color = active ? 'var(--purple)' : 'var(--muted)';
-    btn.style.borderBottomColor = active ? 'var(--purple)' : 'transparent';
-    panel.style.display = active ? '' : 'none';
-  });
-  filterPallets(document.getElementById('pallet-search').value);
-}
-
-function filterPallets(q) {
-  q = q.toLowerCase();
-  var tableId = 'table-' + activeTab;
-  document.querySelectorAll('#' + tableId + ' tbody tr').forEach(function(tr) {
-    tr.style.display = (!q || tr.textContent.toLowerCase().includes(q)) ? '' : 'none';
-  });
-}
-</script>
-
-{% else %}
+{% if not saldos and not saldo_pallets %}
 <div class="empty">
-  <p>No hay pallets registrados todavía.</p>
-  <p class="muted" style="margin-top:6px">Presioná <strong>Actualizar → Sync Completo</strong> para traer los datos desde pWarehouse.</p>
+  <p>No hay saldos pendientes.</p>
 </div>
 {% endif %}
+
+</div>{# /panel-saldos #}
+
+{# ════════════════════════════════════════════════════════════════
+   TAB 2 — PENDIENTES
+   ════════════════════════════════════════════════════════════════ #}
+<div id="panel-pendientes" style="display:none">
+
+{% if pendientes_groups %}
+<table class="grid tight" id="tbl-pend">
+  <thead><tr>
+    <th>OT</th>
+    <th>Tarja</th>
+    <th>Calibre</th>
+    <th>Producto</th>
+    <th>Cliente</th>
+    <th class="num">KG</th>
+    <th>Secado</th>
+    <th>Clase</th>
+  </tr></thead>
+  <tbody>
+  {% for g in pendientes_groups %}
+  <tr class="ot-header pend-ot-header" data-pendot="{{ g.ot }}" style="background:var(--lavender)">
+    <td colspan="5" style="padding:8px 12px;font-weight:700">
+      <span style="color:var(--purple)">{{ g.ot }}</span>
+      <span style="font-weight:400;font-size:12px;color:var(--muted);margin-left:8px">
+        {{ g.pallets | length }} pallet{{ 's' if g.pallets | length != 1 else '' }}
+      </span>
+    </td>
+    <td class="num" style="padding:8px 12px;font-weight:700;color:var(--purple)">
+      {{ "{:,.1f}".format(g.total_kg) }} kg
+    </td>
+    <td colspan="2"></td>
+  </tr>
+  {% for p in g.pallets %}
+  <tr class="tarja-row pend-row" data-pendot="{{ g.ot }}">
+    <td class="mono" style="font-size:11px;color:var(--muted)">{{ p.ot }}</td>
+    <td class="mono" style="font-size:12px">{{ p.tarja or '—' }}</td>
+    <td class="mono">{{ p.caliber or '—' }}</td>
+    <td style="font-size:12px">{{ p.producto or '—' }}</td>
+    <td style="font-size:12px">{{ p.customer or '—' }}</td>
+    <td class="num"><strong>{{ "{:,.1f}".format(p.weight_kg or 0) }}</strong></td>
+    <td>{% if p.drying %}<span class="pill pill-{{ p.drying }}">{{ p.drying_label }}</span>{% else %}—{% endif %}</td>
+    <td style="font-size:12px">{{ p.s_pallet_clase or '—' }}</td>
+  </tr>
+  {% endfor %}
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">
+  <p>No hay pallets pendientes de embarque.</p>
+</div>
+{% endif %}
+
+</div>{# /panel-pendientes #}
+
+<script>
+var _pibTab = 'saldos';
+
+function pibTab(tab) {
+  _pibTab = tab;
+  ['saldos', 'pendientes'].forEach(function(t) {
+    var btn   = document.getElementById('tab-btn-' + t);
+    var panel = document.getElementById('panel-' + t);
+    var on    = (t === tab);
+    btn.style.color              = on ? 'var(--purple)' : 'var(--muted)';
+    btn.style.borderBottomColor  = on ? 'var(--purple)' : 'transparent';
+    panel.style.display          = on ? '' : 'none';
+  });
+  pibFilter(document.getElementById('pib-search').value);
+}
+
+function pibFilter(q) {
+  q = q.toLowerCase();
+
+  if (_pibTab === 'saldos') {
+    // historico table
+    document.querySelectorAll('#tbl-hist tbody .tarja-row').forEach(function(tr) {
+      tr.style.display = (!q || tr.textContent.toLowerCase().includes(q)) ? '' : 'none';
+    });
+    document.querySelectorAll('#tbl-hist tbody .ot-header').forEach(function(hdr) {
+      var ot  = hdr.dataset.ot;
+      var any = false;
+      document.querySelectorAll('#tbl-hist tbody .tarja-row[data-ot="' + ot + '"]').forEach(function(r) {
+        if (r.style.display !== 'none') any = true;
+      });
+      hdr.style.display = any ? '' : 'none';
+    });
+    // pWarehouse saldos table
+    document.querySelectorAll('#tbl-pw tbody .pw-row').forEach(function(tr) {
+      tr.style.display = (!q || tr.textContent.toLowerCase().includes(q)) ? '' : 'none';
+    });
+    document.querySelectorAll('#tbl-pw tbody .pw-ot-header').forEach(function(hdr) {
+      var ot  = hdr.dataset.pwot;
+      var any = false;
+      document.querySelectorAll('#tbl-pw tbody .pw-row[data-pwot="' + ot + '"]').forEach(function(r) {
+        if (r.style.display !== 'none') any = true;
+      });
+      hdr.style.display = any ? '' : 'none';
+    });
+  } else {
+    // pendientes table
+    document.querySelectorAll('#tbl-pend tbody .pend-row').forEach(function(tr) {
+      tr.style.display = (!q || tr.textContent.toLowerCase().includes(q)) ? '' : 'none';
+    });
+    document.querySelectorAll('#tbl-pend tbody .pend-ot-header').forEach(function(hdr) {
+      var ot  = hdr.dataset.pendot;
+      var any = false;
+      document.querySelectorAll('#tbl-pend tbody .pend-row[data-pendot="' + ot + '"]').forEach(function(r) {
+        if (r.style.display !== 'none') any = true;
+      });
+      hdr.style.display = any ? '' : 'none';
+    });
+  }
+}
+
+{% if q_init %}
+document.addEventListener('DOMContentLoaded', function() { pibFilter({{ q_init | tojson }}); });
+{% endif %}
+</script>
 {% endblock %}
