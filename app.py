@@ -2219,9 +2219,12 @@ def create_app():
 
     @app.route('/procesos')
     def list_procesos():
-        from models import Proceso
+        from models import Proceso, HistoricoMovimiento
         from collections import OrderedDict
-        procesos = Proceso.query.order_by(Proceso.ot).all()
+        cereza_ots = db.session.query(HistoricoMovimiento.ot).filter(
+            HistoricoMovimiento.producto.ilike('%CEREZA%')
+        ).distinct()
+        procesos = Proceso.query.filter(~Proceso.ot.in_(cereza_ots)).order_by(Proceso.ot).all()
         last_rec = Proceso.query.order_by(Proceso.imported_at.desc()).first()
         last_imported = last_rec.imported_at if last_rec else None
 
@@ -2308,9 +2311,12 @@ def create_app():
 
     @app.route('/ordenes-de-venta')
     def list_ordenes_de_venta():
-        from models import OrdenDeVenta
+        from models import OrdenDeVenta, HistoricoMovimiento
         from collections import OrderedDict
-        ordenes = OrdenDeVenta.query.order_by(OrdenDeVenta.fecha_primer_embarque.desc().nullslast()).all()
+        cereza_ots = db.session.query(HistoricoMovimiento.ot).filter(
+            HistoricoMovimiento.producto.ilike('%CEREZA%')
+        ).distinct()
+        ordenes = OrdenDeVenta.query.filter(~OrdenDeVenta.ot.in_(cereza_ots)).order_by(OrdenDeVenta.fecha_primer_embarque.desc().nullslast()).all()
         last_imported = ordenes[0].imported_at if ordenes else None
 
         # Group sub-OTs under their base OT
@@ -2385,6 +2391,7 @@ def create_app():
                         HistoricoMovimiento.serie.ilike('%DESCARTE%')
                     )
                 )
+                .filter(~HistoricoMovimiento.producto.ilike('%CEREZA%'))
                 .order_by(HistoricoMovimiento.fecha.desc())
                 .all())
 
@@ -2561,6 +2568,9 @@ def create_app():
 
         proc_in_movs  = {'EGRESO A PROCESO'}
         proc_out_movs = {'INGRESO DESDE PROCESO'}
+
+        if 'PRODUCTO' in df.columns:
+            df = df[~df['PRODUCTO'].fillna('').str.upper().str.contains('CEREZA', na=False)]
 
         mov_col = df['MOVIMIENTO'].fillna('')
         ot_col  = df['OT'].fillna('').astype(str).str.strip()
@@ -2823,6 +2833,7 @@ def create_app():
                          .filter(HistoricoMovimiento.movimiento.in_([
                              'EMBARQUE', 'EGRESO A REPALETIZAJE', 'EGRESO REEMBALAJE'
                          ]))
+                         .filter(~HistoricoMovimiento.producto.ilike('%CEREZA%'))
                          .all())
         consumed_by_ot = {}
         for r in consumed_rows:
@@ -2878,6 +2889,7 @@ def create_app():
                 Pallet.query
                 .filter(Pallet.ot.in_(list(ots_with_embarque)))
                 .filter(Pallet.weight_kg > 0)
+                .filter(~Pallet.producto.ilike('%CEREZA%'))
                 .order_by(Pallet.ot, Pallet.tarja)
                 .all()
             ) if p.tarja not in historico_tarjas
@@ -2886,6 +2898,7 @@ def create_app():
         # ── Tab 2: Pendientes (pWarehouse pallets for OTs with no embarque) ──
         all_pallets = (Pallet.query
                        .filter(Pallet.weight_kg > 0)
+                       .filter(~Pallet.producto.ilike('%CEREZA%'))
                        .order_by(Pallet.ot, Pallet.tarja)
                        .all())
 
@@ -3062,6 +3075,9 @@ def _rebuild_summaries(df, WASTE_SERIES):
     OrdenDeVenta.query.delete(synchronize_session=False)
     Proceso.query.delete(synchronize_session=False)
     db.session.commit()
+
+    if 'PRODUCTO' in df.columns:
+        df = df[~df['PRODUCTO'].fillna('').str.upper().str.contains('CEREZA', na=False)]
 
     mov_col  = df['MOVIMIENTO'].fillna('')
     ot_col   = df['OT'].fillna('').astype(str).str.strip()
