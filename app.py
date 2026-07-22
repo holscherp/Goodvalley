@@ -2614,6 +2614,7 @@ def create_app():
     @app.route('/api/import-historico', methods=['POST'])
     def api_import_historico():
         """Passcode-protected endpoint for Google Apps Script to POST a Historico Excel."""
+        import threading as _threading
         passcode = (request.form.get('passcode') or
                     request.headers.get('X-Passcode') or '').strip()
         if passcode != '001083748':
@@ -2621,16 +2622,18 @@ def create_app():
         f = request.files.get('historico_file')
         if not f:
             return {'error': 'no file'}, 400
-        try:
-            n_rows, n_procs, n_odvs = _run_historico_import(f.read())
-        except Exception as e:
-            return {'error': str(e)}, 500
-        return {
-            'ok': True,
-            'rows': n_rows,
-            'procesos': n_procs,
-            'ordenes': n_odvs,
-        }, 200
+        excel_bytes = f.read()
+        _app = app._get_current_object() if hasattr(app, '_get_current_object') else app
+
+        def _run():
+            try:
+                with _app.app_context():
+                    _run_historico_import(excel_bytes)
+            except Exception as e:
+                _app.logger.error(f'api_import_historico background error: {e}')
+
+        _threading.Thread(target=_run, daemon=True).start()
+        return {'ok': True, 'status': 'import started in background'}, 202
 
     @app.route('/pallets')
     def list_pallets():
