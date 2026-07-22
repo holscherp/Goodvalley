@@ -3014,6 +3014,25 @@ def _migrate(db_obj):
         'ALTER TABLE pallets ADD COLUMN IF NOT EXISTS unidades INTEGER',
         'ALTER TABLE procesos ADD COLUMN IF NOT EXISTS humedad_avg FLOAT',
         'ALTER TABLE ordenes_de_venta ADD COLUMN IF NOT EXISTS humedad_avg FLOAT',
+        # Backfill humedad_avg for existing records from HistoricoMovimiento
+        """UPDATE procesos p
+           SET humedad_avg = sub.h
+           FROM (
+             SELECT ot, ROUND(AVG(humedad)::numeric, 1) AS h
+             FROM historico_movimientos
+             WHERE movimiento = 'INGRESO DESDE PROCESO' AND humedad IS NOT NULL
+             GROUP BY ot
+           ) sub
+           WHERE p.ot = sub.ot AND p.humedad_avg IS NULL""",
+        """UPDATE ordenes_de_venta o
+           SET humedad_avg = sub.h
+           FROM (
+             SELECT ot, ROUND(AVG(humedad)::numeric, 1) AS h
+             FROM historico_movimientos
+             WHERE movimiento = 'EMBARQUE' AND humedad IS NOT NULL
+             GROUP BY ot
+           ) sub
+           WHERE o.ot = sub.ot AND o.humedad_avg IS NULL""",
     ]
     with db_obj.engine.connect() as conn:
         for sql in stmts:

@@ -116,6 +116,7 @@
       <th>Cliente</th>
       <th>Contenedor</th>
       <th class="num">Neto (kg)</th>
+      <th class="num">Humedad</th>
       <th class="num">Unidades</th>
       <th>Bodega</th>
     </tr></thead>
@@ -130,6 +131,7 @@
       <td style="font-size:12px">{{ m.cliente or '—' }}</td>
       <td style="font-size:12px">{{ m.contenedor or '—' }}</td>
       <td class="num"><strong>{{ "{:,.1f}".format(m.neto) if m.neto else '—' }}</strong></td>
+      <td class="num">{{ "%.1f%%"|format(m.humedad) if m.humedad else '—' }}</td>
       <td class="num">{{ m.unidades or '—' }}</td>
       <td style="font-size:12px">{{ m.bodega or '—' }}</td>
     </tr>

@@ -113,6 +113,14 @@
     </div>
     {% endif %}
 
+    {# Humedad card #}
+    {% if p.humedad_avg %}
+    <div class="card" style="padding:12px 18px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;margin-bottom:8px">Humedad</div>
+      <div style="font-size:.95rem;font-weight:700">{{ "%.1f%%"|format(p.humedad_avg) }}</div>
+    </div>
+    {% endif %}
+
     {# Combined período card #}
     <div class="card" style="padding:12px 18px;white-space:nowrap">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;margin-bottom:8px">
@@ -144,6 +152,7 @@
       <th>Producto</th>
       <th>Productor</th>
       <th class="num">Neto (kg)</th>
+      <th class="num">Humedad</th>
       <th>Bodega</th>
     </tr></thead>
     <tbody>
@@ -170,6 +179,7 @@
       <td class="num" style="font-weight:{% if m.movimiento and 'INGRESO' in m.movimiento and not m.is_waste %}700{% else %}400{% endif %}">
         {{ "{:,.1f}".format(m.neto) if m.neto else '—' }}
       </td>
+      <td class="num">{{ "%.1f%%"|format(m.humedad) if m.humedad else '—' }}</td>
       <td style="font-size:12px">{{ m.bodega or '—' }}</td>
     </tr>
     {% endfor %}
