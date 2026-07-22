@@ -308,7 +308,12 @@
   font-size: 13px;
   font-weight: 700;
   color: var(--fg);
+  cursor: text;
+  border-bottom: 1px dashed var(--border);
+  padding: 0 3px;
+  outline: none;
 }
+.spin-num:focus { border-bottom-color: var(--purple); }
 </style>
 
 <script>
@@ -371,13 +376,13 @@ function buildSerieRow(lo, hi, pctVal) {
   div.innerHTML =
     '<div class="spin-group">'
       + '<button type="button" class="spin-btn" onclick="spinAdj(this,-1)">▼</button>'
-      + '<span class="spin-num" data-field="lo">' + lo + '</span>'
+      + '<span class="spin-num" data-field="lo" contenteditable="true">' + lo + '</span>'
       + '<button type="button" class="spin-btn" onclick="spinAdj(this,1)">▲</button>'
     + '</div>'
     + '<span style="font-size:13px;color:var(--muted);font-weight:600;padding:0 6px">a</span>'
     + '<div class="spin-group">'
       + '<button type="button" class="spin-btn" onclick="spinAdj(this,-1)">▼</button>'
-      + '<span class="spin-num" data-field="hi">' + hi + '</span>'
+      + '<span class="spin-num" data-field="hi" contenteditable="true">' + hi + '</span>'
       + '<button type="button" class="spin-btn" onclick="spinAdj(this,1)">▲</button>'
     + '</div>'
     + '<input class="pct-input" type="number" placeholder="0"'
@@ -398,13 +403,10 @@ function renderSerieRows(caliberStr) {
 
   var parts = caliberStr.split('/');
   if (parts.length !== 2) { placeholder.style.display = 'block'; return; }
-  var lo   = parseInt(parts[0]);
-  var hi   = parseInt(parts[1]);
-  var step = hi - lo;
+  var lo = parseInt(parts[0]);
+  var hi = parseInt(parts[1]);
 
-  [[lo - step, lo], [lo, hi], [hi, hi + step], [hi + step, hi + 2 * step]].forEach(function(r) {
-    container.appendChild(buildSerieRow(r[0], r[1], ''));
-  });
+  container.appendChild(buildSerieRow(lo, hi, '100'));
   placeholder.style.display = 'none';
   updateBudget('serie');
 }
