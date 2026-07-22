@@ -13,8 +13,8 @@ from urllib.parse import urlparse, parse_qs, urlencode
 from playwright.async_api import async_playwright, TimeoutError as PWTimeout
 
 PWAREHOUSE_URL  = os.environ.get('PWAREHOUSE_URL', 'http://190.211.168.247:8077')
-RUT             = os.environ.get('PWAREHOUSE_RUT',  '20664661-6')
-PASSWORD        = os.environ.get('PWAREHOUSE_PASS', 'estante991')
+RUT             = os.environ.get('PWAREHOUSE_RUT',  '')
+PASSWORD        = os.environ.get('PWAREHOUSE_PASS', '')
 GOODVALLEY_URL  = os.environ.get('GOODVALLEY_URL',  'https://web-production-2eea96.up.railway.app')
 OUTPUT_FILE          = Path(os.environ.get('GV_OUTPUT', str(Path.home() / 'Desktop' / 'bins_scraped.json')))
 PALLETS_OUTPUT_FILE  = Path(os.environ.get('GV_PALLETS_OUT', ''))

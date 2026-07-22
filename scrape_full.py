@@ -16,8 +16,8 @@ from playwright.async_api import async_playwright
 HISTORICO_PATH = Path.home() / 'Desktop' / 'historico para Camilo.xlsx'
 
 PWAREHOUSE_URL = os.environ.get('PWAREHOUSE_URL', 'http://190.211.168.247:8077')
-RUT            = os.environ.get('PWAREHOUSE_RUT',  '20664661-6')
-PASSWORD       = os.environ.get('PWAREHOUSE_PASS', 'estante991')
+RUT            = os.environ.get('PWAREHOUSE_RUT',  '')
+PASSWORD       = os.environ.get('PWAREHOUSE_PASS', '')
 GOODVALLEY_URL = os.environ.get('GOODVALLEY_URL',  'https://web-production-2eea96.up.railway.app')
 
 # Output paths (can be overridden by env vars set by sync_start in app.py)
@@ -442,27 +442,29 @@ async def scrape_procesos_section(ctx):
         except Exception:
             pass
 
-        # Set Desde = 01/01/2026 so we capture the full season, not just today.
+        # Set Desde = 01/01/<current_year> so we capture the full season.
         # pWarehouse defaults both Desde and Hasta to today on page load.
+        _season_year = datetime.datetime.now().year
+        _desde_date_str = f'01/01/{_season_year}'
         # Strategy 1: call ExtJS component API directly (bypasses DOM, triggers internal state)
         _desde_set = False
         try:
-            js_result = await page.evaluate("""
-                (function() {
-                    if (typeof Ext === 'undefined') return {ok: false, reason: 'no Ext'};
+            js_result = await page.evaluate(f"""
+                (function() {{
+                    if (typeof Ext === 'undefined') return {{ok: false, reason: 'no Ext'}};
                     var fields = Ext.ComponentQuery.query('datefield');
                     if (!fields || fields.length === 0)
-                        return {ok: false, reason: 'no datefields'};
+                        return {{ok: false, reason: 'no datefields'}};
                     var f = fields[0];
-                    var d = new Date(2026, 0, 1);
+                    var d = new Date({_season_year}, 0, 1);
                     f.setValue(d);
                     f.fireEvent('change', f, d, null);
-                    return {ok: true, count: fields.length, raw: f.getRawValue()};
-                })()
+                    return {{ok: true, count: fields.length, raw: f.getRawValue()}};
+                }})()
             """)
             print(f'[PROC] ExtJS setValue → {js_result}')
             if js_result and js_result.get('ok'):
-                print(f'[PROC] Desde → 01/01/2026 via ExtJS (raw={js_result.get("raw")})')
+                print(f'[PROC] Desde → {_desde_date_str} via ExtJS (raw={js_result.get("raw")})')
                 _desde_set = True
         except Exception as e:
             print(f'[PROC] ExtJS setValue falló: {e}')
@@ -484,12 +486,12 @@ async def scrape_procesos_section(ctx):
                 if date_inputs:
                     desde_inp, _ = date_inputs[0]
                     await desde_inp.triple_click()
-                    await page.keyboard.type('01/01/2026')
+                    await page.keyboard.type(_desde_date_str)
                     await page.keyboard.press('Tab')
                     await page.wait_for_timeout(600)
                     # Verify the field now shows the new value
                     new_val = await date_inputs[0][0].input_value()
-                    print(f'[PROC] Desde → keyboard fallback → valor actual: {new_val}')
+                    print(f'[PROC] Desde → keyboard fallback → valor actual: {new_val} (target: {_desde_date_str})')
                     if len(date_inputs) >= 2:
                         print(f'[PROC] Hasta → {date_inputs[1][1]} (sin cambio)')
             except Exception as e:

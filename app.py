@@ -142,7 +142,8 @@ def create_app():
 
     app.config['SQLALCHEMY_DATABASE_URI'] = db_url
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY') or 'dev-secret-change-me'
+    app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB upload limit
 
     db.init_app(app)
 
@@ -386,8 +387,12 @@ def create_app():
 
     @app.route('/sync/status/<job_id>')
     def sync_status(job_id):
+        import re as _re2
         from pathlib import Path as _Path
         from flask import jsonify
+
+        if not _re2.match(r'^[a-f0-9]{8}$', job_id):
+            return jsonify({'error': 'invalid job_id'}), 400
 
         log_path    = _Path(f'/tmp/gv_job_{job_id}.log')
         status_path = _Path(f'/tmp/gv_job_{job_id}.status')
@@ -569,6 +574,7 @@ def create_app():
                         )
                         lf.flush()
                 except Exception as e:
+                    db.session.rollback()
                     with open(log_path, 'a') as lf:
                         lf.write(f'✗ Error importando bins: {e}\n')
                         lf.flush()
@@ -616,6 +622,7 @@ def create_app():
                         lf.write(f'✓ Pallets: {added_p} nuevos, {updated_p} actualizados.\n')
                         lf.flush()
                 except Exception as _ep:
+                    db.session.rollback()
                     with open(log_path, 'a') as lf:
                         lf.write(f'⚠ Error importando pallets: {_ep}\n')
                         lf.flush()
@@ -1778,7 +1785,7 @@ def create_app():
                         s = Excedente(
                             source_order_id=order_id,
                             source_line_id=line.id,
-                            source_bin_tarja=alloc.bin.bin_identifier,
+                            source_bin_tarja=alloc.bin.bin_identifier if alloc.bin else None,
                             caliber=line.caliber,
                             drying=line.drying,
                             temporada=line.temporada,
@@ -2075,7 +2082,8 @@ def create_app():
         from models import Proceso
         from collections import OrderedDict
         procesos = Proceso.query.order_by(Proceso.ot).all()
-        last_imported = procesos[0].imported_at if procesos else None
+        last_rec = Proceso.query.order_by(Proceso.imported_at.desc()).first()
+        last_imported = last_rec.imported_at if last_rec else None
 
         # Group sub-OTs (e.g. 785-0001-1 + 785-0001-2) under their base OT
         groups = OrderedDict()
@@ -2498,26 +2506,34 @@ def create_app():
 
         # Only replace movements for OTs that appear in this file.
         # OTs not in this file are left completely untouched.
+        # All deletes + inserts happen in ONE transaction — if insert fails,
+        # the delete is also rolled back so no data is permanently lost.
         new_ots = list({r['ot'] for r in records if r['ot']})
-        if new_ots:
-            (HistoricoMovimiento.query
-             .filter(HistoricoMovimiento.ot.in_(new_ots))
-             .delete(synchronize_session=False))
-        db.session.commit()
-
-        db.session.execute(_sa_insert(HistoricoMovimiento), records)
-        db.session.commit()
+        try:
+            if new_ots:
+                (HistoricoMovimiento.query
+                 .filter(HistoricoMovimiento.ot.in_(new_ots))
+                 .delete(synchronize_session=False))
+            db.session.execute(_sa_insert(HistoricoMovimiento), records)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
         n_rows = len(records)
 
         # ── 2. Rebuild Proceso/OrdenDeVenta only for OTs in this file ─────
-        if new_ots:
-            (OrdenDeVenta.query
-             .filter(OrdenDeVenta.ot.in_(new_ots))
-             .delete(synchronize_session=False))
-            (Proceso.query
-             .filter(Proceso.ot.in_(new_ots))
-             .delete(synchronize_session=False))
-        db.session.commit()
+        try:
+            if new_ots:
+                (OrdenDeVenta.query
+                 .filter(OrdenDeVenta.ot.in_(new_ots))
+                 .delete(synchronize_session=False))
+                (Proceso.query
+                 .filter(Proceso.ot.in_(new_ots))
+                 .delete(synchronize_session=False))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
 
         proc_in_movs  = {'EGRESO A PROCESO'}
         proc_out_movs = {'INGRESO DESDE PROCESO'}
