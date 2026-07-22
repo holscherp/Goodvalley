@@ -2650,6 +2650,21 @@ def create_app():
         _threading.Thread(target=_run, daemon=True).start()
         return {'ok': True, 'status': 'import started in background'}, 202
 
+    @app.route('/api/sync-trigger', methods=['POST'])
+    def api_sync_trigger():
+        """Passcode-protected endpoint for cron-job.org to trigger a full pWarehouse sync."""
+        passcode = (request.form.get('passcode') or
+                    request.headers.get('X-Passcode') or
+                    request.json.get('passcode') if request.is_json else None or '').strip()
+        if passcode != '001083748':
+            return {'error': 'unauthorized'}, 401
+
+        import threading as _t2
+        from flask import current_app as _ca
+        _app = _ca._get_current_object()
+        _t2.Thread(target=lambda: _run_sync(_app), daemon=True).start()
+        return {'ok': True, 'status': 'sync started'}, 202
+
     @app.route('/pallets')
     def list_pallets():
         from models import Pallet, HistoricoMovimiento
@@ -3002,7 +3017,132 @@ def _migrate(db_obj):
                     pass
 
 
+def _run_sync(flask_app):
+    """Full pWarehouse sync: scrape + import bins + import pallets. Runs in a background thread."""
+    import subprocess, sys, json as _json, datetime as _dt, uuid as _uuid2, os
+    from pathlib import Path as _Path2
+
+    job_id       = _uuid2.uuid4().hex[:8]
+    bins_path    = _Path2(f'/tmp/gv_bins_{job_id}.json')
+    pallets_path = _Path2(f'/tmp/gv_pallets_{job_id}.json')
+    scraper      = _Path2(__file__).parent / 'scrape_full.py'
+
+    env = {**os.environ, 'GV_NO_UPLOAD': '1',
+           'GV_BINS_OUT': str(bins_path),
+           'GV_PALLETS_OUT': str(pallets_path)}
+
+    proc = subprocess.Popen(
+        [sys.executable, str(scraper)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, bufsize=1, env=env,
+    )
+    for line in proc.stdout:
+        flask_app.logger.info(f'[auto-sync] {line.rstrip()}')
+    proc.wait()
+
+    if proc.returncode != 0:
+        flask_app.logger.error(f'[auto-sync] scraper exited {proc.returncode}')
+        return
+
+    with flask_app.app_context():
+        if bins_path.exists():
+            try:
+                from models import Bin as _Bin2
+                bins_data = _json.loads(bins_path.read_text())
+                existing_map = {
+                    r[0]: r[1] for r in
+                    db.session.query(_Bin2.bin_identifier, _Bin2.id)
+                    .filter(_Bin2.status == 'available').all()
+                }
+                all_ids  = {r[0] for r in db.session.query(_Bin2.bin_identifier).all()}
+                new_batch, updated = [], 0
+                for b in bins_data:
+                    bid = str(b.get('bin_identifier', '')).strip()
+                    if not bid: continue
+                    drying = b.get('drying') or ''
+                    if drying not in ('cancha', 'horno', 'termino_secado'): continue
+                    weight = float(b.get('weight_kg') or 0)
+                    if bid in existing_map:
+                        db.session.query(_Bin2).filter_by(id=existing_map[bid]).update({
+                            'weight_kg': weight, 'humedad': b.get('humedad'),
+                            'caliber': b.get('caliber') or '', 'drying': drying,
+                            'producto': b.get('producto') or '',
+                            'contenedor': b.get('contenedor') or '',
+                            'temporada': b.get('temporada'),
+                        }, synchronize_session=False)
+                        updated += 1
+                    elif bid not in all_ids:
+                        new_batch.append(_Bin2(
+                            bin_identifier=bid, producto=b.get('producto') or '',
+                            caliber=b.get('caliber') or '', drying=drying,
+                            weight_kg=weight, humedad=b.get('humedad'),
+                            contenedor=b.get('contenedor') or '',
+                            temporada=b.get('temporada'), status='available',
+                        ))
+                        all_ids.add(bid)
+                if new_batch:
+                    db.session.bulk_save_objects(new_batch)
+                db.session.commit()
+                flask_app.logger.info(f'[auto-sync] Bins: {len(new_batch)} new, {updated} updated')
+            except Exception as e:
+                db.session.rollback()
+                flask_app.logger.error(f'[auto-sync] bins import error: {e}')
+
+        if pallets_path.exists():
+            try:
+                from models import Pallet as _Pallet2
+                pallets_data = _json.loads(pallets_path.read_text())
+                existing_p   = {r[0] for r in db.session.query(_Pallet2.tarja).all()}
+                added_p = updated_p = 0
+                for p in pallets_data:
+                    tarja = str(p.get('tarja') or '').strip()
+                    if not tarja: continue
+                    fields = {
+                        'ot':               str(p.get('ot') or '').strip() or None,
+                        'customer':         str(p.get('customer') or '').strip() or None,
+                        'caliber':          str(p.get('caliber') or '').strip() or None,
+                        'drying':           p.get('drying') or None,
+                        'weight_kg':        float(p.get('weight_kg') or 0),
+                        'producto':         str(p.get('producto') or '').strip() or None,
+                        'pallet_estado_ot': p.get('pallet_estado_ot') or None,
+                        's_pallet_clase':   p.get('s_pallet_clase') or None,
+                        'unidades':         int(p['unidades']) if p.get('unidades') else None,
+                        'synced_at':        _dt.datetime.utcnow(),
+                    }
+                    if tarja in existing_p:
+                        db.session.query(_Pallet2).filter_by(tarja=tarja).update(
+                            fields, synchronize_session=False)
+                        updated_p += 1
+                    else:
+                        db.session.add(_Pallet2(tarja=tarja, **fields))
+                        existing_p.add(tarja)
+                        added_p += 1
+                db.session.commit()
+                flask_app.logger.info(f'[auto-sync] Pallets: {added_p} new, {updated_p} updated')
+            except Exception as e:
+                db.session.rollback()
+                flask_app.logger.error(f'[auto-sync] pallets import error: {e}')
+
+
 app = create_app()
+
+# ── Auto-sync scheduler (every 6 hours) ──────────────────────────────────────
+import threading as _sched_thread
+import time as _sched_time
+
+def _auto_sync_loop():
+    _sched_time.sleep(120)  # 2-minute warm-up after startup
+    while True:
+        try:
+            app.logger.info('[auto-sync] Starting scheduled pWarehouse sync…')
+            _run_sync(app)
+        except Exception as _e:
+            app.logger.error(f'[auto-sync scheduler] Unexpected error: {_e}')
+        _sched_time.sleep(6 * 3600)  # sleep 6 hours
+
+if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+    _sched_thread.Thread(target=_auto_sync_loop, daemon=True, name='gv-auto-sync').start()
+
 
 if __name__ == '__main__':
     app.run(debug=True)
