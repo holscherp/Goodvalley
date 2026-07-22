@@ -2391,7 +2391,7 @@ def create_app():
                         HistoricoMovimiento.serie.ilike('%DESCARTE%')
                     )
                 )
-                .filter(~HistoricoMovimiento.producto.ilike('%CEREZA%'))
+                .filter(db.or_(HistoricoMovimiento.producto.is_(None), ~HistoricoMovimiento.producto.ilike('%CEREZA%')))
                 .order_by(HistoricoMovimiento.fecha.desc())
                 .all())
 
@@ -2408,7 +2408,8 @@ def create_app():
 
     @app.route('/saldos')
     def list_saldos():
-        return redirect(url_for('list_pallets'))
+        q = request.args.get('q', '')
+        return redirect(url_for('list_pallets') + ('?q=' + q if q else ''))
     # ── Import Histórico ──────────────────────────────────────────────────────
 
     def _run_historico_import(excel_bytes):
@@ -2825,7 +2826,7 @@ def create_app():
                         HistoricoMovimiento.serie.in_(WASTE_SERIES),
                         HistoricoMovimiento.serie.ilike('%DESCARTE%')
                     ))
-                    .filter(~HistoricoMovimiento.producto.ilike('%CEREZA%'))
+                    .filter(db.or_(HistoricoMovimiento.producto.is_(None), ~HistoricoMovimiento.producto.ilike('%CEREZA%')))
                     .order_by(HistoricoMovimiento.fecha)
                     .all())
 
@@ -2833,7 +2834,7 @@ def create_app():
                          .filter(HistoricoMovimiento.movimiento.in_([
                              'EMBARQUE', 'EGRESO A REPALETIZAJE', 'EGRESO REEMBALAJE'
                          ]))
-                         .filter(~HistoricoMovimiento.producto.ilike('%CEREZA%'))
+                         .filter(db.or_(HistoricoMovimiento.producto.is_(None), ~HistoricoMovimiento.producto.ilike('%CEREZA%')))
                          .all())
         consumed_by_ot = {}
         for r in consumed_rows:
@@ -2889,7 +2890,7 @@ def create_app():
                 Pallet.query
                 .filter(Pallet.ot.in_(list(ots_with_embarque)))
                 .filter(Pallet.weight_kg > 0)
-                .filter(~Pallet.producto.ilike('%CEREZA%'))
+                .filter(db.or_(Pallet.producto.is_(None), ~Pallet.producto.ilike('%CEREZA%')))
                 .order_by(Pallet.ot, Pallet.tarja)
                 .all()
             ) if p.tarja not in historico_tarjas
@@ -2898,7 +2899,7 @@ def create_app():
         # ── Tab 2: Pendientes (pWarehouse pallets for OTs with no embarque) ──
         all_pallets = (Pallet.query
                        .filter(Pallet.weight_kg > 0)
-                       .filter(~Pallet.producto.ilike('%CEREZA%'))
+                       .filter(db.or_(Pallet.producto.is_(None), ~Pallet.producto.ilike('%CEREZA%')))
                        .order_by(Pallet.ot, Pallet.tarja)
                        .all())
 
