@@ -122,16 +122,19 @@
     {% endif %}
 
     {# Combined período card #}
-    <div class="card" style="padding:12px 18px;white-space:nowrap">
+    <div class="card" style="padding:12px 18px">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;margin-bottom:8px">
         Período
       </div>
-      <div style="font-size:.95rem;font-weight:700;display:flex;align-items:center;gap:8px">
-        <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600">Inicio</span>
-        {{ p.fecha_inicio_str }}
-        <span style="color:var(--muted)">→</span>
-        <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600">Fin</span>
-        {{ p.fecha_fin_str }}
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div>
+          <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-right:6px">Inicio</span>
+          <span style="font-size:.95rem;font-weight:700">{{ p.fecha_inicio_str }}</span>
+        </div>
+        <div>
+          <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-right:6px">Fin</span>
+          <span style="font-size:.95rem;font-weight:700">{{ p.fecha_fin_str }}</span>
+        </div>
       </div>
     </div>
   </div>
