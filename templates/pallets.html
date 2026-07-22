@@ -2,9 +2,10 @@
 {% block title %}Pallets en Bodega · Goodvalley{% endblock %}
 
 {% block content %}
-{% set pallet_kg = saldo_pallets | sum(attribute='weight_kg') if saldo_pallets else 0 %}
-{% set pend_count = pendientes_groups | sum(attribute='pallets') | list | length if pendientes_groups else 0 %}
+{% set pallet_kg  = saldo_pallets | sum(attribute='weight_kg') if saldo_pallets else 0 %}
 {% set pend_kg    = pendientes_groups | sum(attribute='total_kg') if pendientes_groups else 0 %}
+{% set pend_count = namespace(n=0) %}
+{% for g in pendientes_groups %}{% set pend_count.n = pend_count.n + (g.pallets | length) %}{% endfor %}
 
 <div class="row-between" style="margin-bottom:20px">
   <div>
