@@ -33,6 +33,16 @@
        class="{{ 'on' if request.endpoint and 'rendimiento' in request.endpoint else '' }}">Rendimientos</a>
   </nav>
   <div class="topbar-actions">
+    {% if current_user.is_authenticated %}
+    <span style="font-size:12px;color:var(--muted);margin-right:8px">{{ current_user.name or current_user.email }}</span>
+    {% if current_user.is_admin %}
+    <a href="{{ url_for('admin_users') }}"
+       style="font-size:12px;color:var(--muted);text-decoration:none;margin-right:12px;
+              {% if request.endpoint == 'admin_users' %}color:var(--purple);{% endif %}">Usuarios</a>
+    {% endif %}
+    <a href="{{ url_for('logout') }}"
+       style="font-size:12px;color:var(--muted);text-decoration:none;margin-right:16px">Salir</a>
+    {% endif %}
     <div class="act-dropdown" id="act-dd">
       <button class="btn btn-pw act-toggle" type="button" id="act-toggle">Actualizar ▾</button>
       <div class="act-menu" id="act-menu">

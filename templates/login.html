@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Iniciar sesión · Goodvalley</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+  <style>
+    body { display:flex; align-items:center; justify-content:center; min-height:100vh; background:var(--bg) }
+    .login-box {
+      background:var(--card); border:1px solid var(--border); border-radius:14px;
+      padding:40px 44px; width:100%; max-width:380px; box-shadow:0 4px 24px rgba(0,0,0,.18);
+    }
+    .login-logo { text-align:center; margin-bottom:28px }
+    .login-logo img { height:48px }
+    .login-box h1 { font-size:1.15rem; font-weight:700; margin:0 0 24px; text-align:center; color:var(--fg) }
+    .field { margin-bottom:16px }
+    .field label { display:block; font-size:12px; font-weight:600; color:var(--muted);
+                   text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px }
+    .field input {
+      width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px;
+      background:var(--bg); color:var(--fg); font-size:14px; box-sizing:border-box;
+      transition:border-color .15s;
+    }
+    .field input:focus { outline:none; border-color:var(--purple) }
+    .btn-login {
+      width:100%; padding:11px; background:var(--purple); color:#fff; border:none;
+      border-radius:8px; font-size:14px; font-weight:700; cursor:pointer; margin-top:8px;
+      letter-spacing:.02em; transition:opacity .15s;
+    }
+    .btn-login:hover { opacity:.88 }
+    .login-error {
+      background:#fee2e2; color:#b91c1c; border-radius:8px;
+      padding:10px 14px; font-size:13px; margin-bottom:18px; text-align:center;
+    }
+  </style>
+</head>
+<body>
+<div class="login-box">
+  <div class="login-logo">
+    <img src="{{ url_for('static', filename='logo.png') }}" alt="Goodvalley">
+  </div>
+  <h1>Iniciar sesión</h1>
+  {% if error %}
+  <div class="login-error">{{ error }}</div>
+  {% endif %}
+  <form method="post">
+    <div class="field">
+      <label>Email</label>
+      <input type="email" name="email" required autofocus autocomplete="email">
+    </div>
+    <div class="field">
+      <label>Contraseña</label>
+      <input type="password" name="password" required autocomplete="current-password">
+    </div>
+    <button class="btn-login" type="submit">Entrar</button>
+  </form>
+</div>
+</body>
+</html>

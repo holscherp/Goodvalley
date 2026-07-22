@@ -1,5 +1,7 @@
 from datetime import datetime
 from db import db
+from flask_login import UserMixin
+from werkzeug.security import generate_password_hash, check_password_hash
 import re as _re
 
 _CALIBER_RE = _re.compile(r'(\d{2,3}/\d{2,3}|\d{2,3}\+)')
@@ -618,3 +620,19 @@ class AppSetting(db.Model):
     __tablename__ = 'app_settings'
     key   = db.Column(db.String(80), primary_key=True)
     value = db.Column(db.Text, nullable=True)
+
+
+class User(db.Model, UserMixin):
+    __tablename__ = 'users'
+    id            = db.Column(db.Integer, primary_key=True)
+    email         = db.Column(db.String(200), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(256), nullable=False)
+    name          = db.Column(db.String(100), nullable=True)
+    is_admin      = db.Column(db.Boolean, default=False, nullable=False)
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)

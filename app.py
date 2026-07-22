@@ -2,6 +2,7 @@ import os, re as _re_app
 from datetime import datetime
 
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
+from flask_login import LoginManager, login_required, login_user, logout_user, current_user
 from sqlalchemy.exc import IntegrityError
 
 from db import db
@@ -147,8 +148,19 @@ def create_app():
 
     db.init_app(app)
 
+    # ── Auth ──────────────────────────────────────────────────────────────────
+    login_manager = LoginManager()
+    login_manager.init_app(app)
+    login_manager.login_view = 'login'
+    login_manager.login_message = 'Iniciá sesión para continuar.'
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        from models import User
+        return db.session.get(User, int(user_id))
+
     with app.app_context():
-        from models import Bin, Order, OrderLine, Allocation, Excedente, YieldOverride, Proceso, HistoricoMovimiento, OrdenDeVenta, Pallet, AppSetting  # noqa: F401
+        from models import Bin, Order, OrderLine, Allocation, Excedente, YieldOverride, Proceso, HistoricoMovimiento, OrdenDeVenta, Pallet, AppSetting, User  # noqa: F401
         _pre_migrate(db)
         db.create_all()
 
@@ -157,7 +169,111 @@ def create_app():
         from models import load_yield_overrides
         load_yield_overrides()
 
+    # ── Bootstrap first admin from env vars ───────────────────────────────────
+    with app.app_context():
+        from models import User as _User
+        admin_email = os.environ.get('ADMIN_EMAIL', '').strip()
+        admin_pass  = os.environ.get('ADMIN_PASSWORD', '').strip()
+        if admin_email and admin_pass and not _User.query.filter_by(email=admin_email).first():
+            _admin = _User(email=admin_email, name='Admin', is_admin=True)
+            _admin.set_password(admin_pass)
+            db.session.add(_admin)
+            db.session.commit()
+
+    # ── Block every route for unauthenticated users ───────────────────────────
+    _PUBLIC_ENDPOINTS = {'login', 'static'}
+
+    @app.before_request
+    def require_login():
+        if request.endpoint and request.endpoint not in _PUBLIC_ENDPOINTS:
+            if not current_user.is_authenticated:
+                return redirect(url_for('login'))
+
     # ── Routes ────────────────────────────────────────────────────────────────
+
+    @app.route('/login', methods=['GET', 'POST'])
+    def login():
+        if current_user.is_authenticated:
+            return redirect(url_for('index'))
+        error = None
+        if request.method == 'POST':
+            from models import User as _U
+            email    = (request.form.get('email') or '').strip().lower()
+            password = request.form.get('password') or ''
+            user = _U.query.filter_by(email=email).first()
+            if user and user.check_password(password):
+                login_user(user, remember=True)
+                return redirect(request.args.get('next') or url_for('index'))
+            error = 'Email o contraseña incorrectos.'
+        return render_template('login.html', error=error)
+
+    @app.route('/logout')
+    def logout():
+        logout_user()
+        return redirect(url_for('login'))
+
+    # ── User management (admin only) ──────────────────────────────────────────
+
+    @app.route('/admin/users')
+    def admin_users():
+        if not current_user.is_admin:
+            flash('Acceso restringido.', 'err')
+            return redirect(url_for('index'))
+        from models import User as _U
+        users = _U.query.order_by(_U.created_at).all()
+        return render_template('admin_users.html', users=users)
+
+    @app.route('/admin/users/create', methods=['POST'])
+    def admin_users_create():
+        if not current_user.is_admin:
+            return {'error': 'forbidden'}, 403
+        from models import User as _U
+        email    = (request.form.get('email') or '').strip().lower()
+        name     = (request.form.get('name') or '').strip()
+        password = (request.form.get('password') or '').strip()
+        is_admin = request.form.get('is_admin') == '1'
+        if not email or not password:
+            flash('Email y contraseña son obligatorios.', 'err')
+            return redirect(url_for('admin_users'))
+        if _U.query.filter_by(email=email).first():
+            flash(f'Ya existe una cuenta con {email}.', 'err')
+            return redirect(url_for('admin_users'))
+        u = _U(email=email, name=name or None, is_admin=is_admin)
+        u.set_password(password)
+        db.session.add(u)
+        db.session.commit()
+        flash(f'Cuenta creada para {email}.', 'ok')
+        return redirect(url_for('admin_users'))
+
+    @app.route('/admin/users/<int:uid>/delete', methods=['POST'])
+    def admin_users_delete(uid):
+        if not current_user.is_admin:
+            return {'error': 'forbidden'}, 403
+        if uid == current_user.id:
+            flash('No podés eliminar tu propia cuenta.', 'err')
+            return redirect(url_for('admin_users'))
+        from models import User as _U
+        u = db.session.get(_U, uid)
+        if u:
+            db.session.delete(u)
+            db.session.commit()
+            flash(f'Cuenta {u.email} eliminada.', 'ok')
+        return redirect(url_for('admin_users'))
+
+    @app.route('/admin/users/<int:uid>/reset-password', methods=['POST'])
+    def admin_users_reset_password(uid):
+        if not current_user.is_admin:
+            return {'error': 'forbidden'}, 403
+        from models import User as _U
+        u = db.session.get(_U, uid)
+        new_pw = (request.form.get('password') or '').strip()
+        if not u or not new_pw:
+            flash('Datos inválidos.', 'err')
+            return redirect(url_for('admin_users'))
+        u.set_password(new_pw)
+        db.session.commit()
+        flash(f'Contraseña de {u.email} actualizada.', 'ok')
+        return redirect(url_for('admin_users'))
 
     @app.route('/')
     def index():
@@ -3056,6 +3172,14 @@ def _migrate(db_obj):
         'ALTER TABLE pallets ADD COLUMN IF NOT EXISTS unidades INTEGER',
         'ALTER TABLE procesos ADD COLUMN IF NOT EXISTS humedad_avg FLOAT',
         'ALTER TABLE ordenes_de_venta ADD COLUMN IF NOT EXISTS humedad_avg FLOAT',
+        """CREATE TABLE IF NOT EXISTS users (
+            id            SERIAL PRIMARY KEY,
+            email         VARCHAR(200) UNIQUE NOT NULL,
+            password_hash VARCHAR(256) NOT NULL,
+            name          VARCHAR(100),
+            is_admin      BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at    TIMESTAMP DEFAULT NOW()
+        )""",
         # Backfill humedad_avg for existing records from HistoricoMovimiento
         """UPDATE procesos p
            SET humedad_avg = sub.h

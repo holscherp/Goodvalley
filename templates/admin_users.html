@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+{% block title %}Usuarios · Goodvalley{% endblock %}
+
+{% block content %}
+<div class="row-between" style="margin-bottom:24px">
+  <div>
+    <h1>Gestión de Usuarios</h1>
+    <p class="muted">Creá, editá o eliminá cuentas de acceso al sistema.</p>
+  </div>
+</div>
+
+{# ── Create form ── #}
+<div class="card" style="padding:24px 28px;margin-bottom:32px;max-width:520px">
+  <h2 style="font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 16px">
+    Nueva cuenta
+  </h2>
+  <form method="post" action="{{ url_for('admin_users_create') }}">
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);
+                      text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Nombre</label>
+        <input type="text" name="name" placeholder="Diego López"
+               style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;
+                      background:var(--bg);color:var(--fg);font-size:13px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);
+                      text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Email *</label>
+        <input type="email" name="email" required placeholder="diego@goodvalley.cl"
+               style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;
+                      background:var(--bg);color:var(--fg);font-size:13px;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--muted);
+                      text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Contraseña *</label>
+        <input type="text" name="password" required placeholder="Contraseña inicial"
+               style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;
+                      background:var(--bg);color:var(--fg);font-size:13px;box-sizing:border-box">
+        <p style="font-size:11px;color:var(--muted);margin:4px 0 0">
+          Compartí esta contraseña con el usuario — puede cambiarla después.
+        </p>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" name="is_admin" value="1" id="is_admin_check" style="width:auto">
+        <label for="is_admin_check" style="font-size:13px;color:var(--fg);cursor:pointer">
+          Administrador (puede crear y eliminar cuentas)
+        </label>
+      </div>
+      <div>
+        <button type="submit" class="btn btn-pw">Crear cuenta</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+{# ── User list ── #}
+<h2 style="font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 12px">
+  Cuentas activas ({{ users|length }})
+</h2>
+<table class="grid tight" style="max-width:720px">
+  <thead><tr>
+    <th>Nombre</th>
+    <th>Email</th>
+    <th>Rol</th>
+    <th>Creado</th>
+    <th>Nueva contraseña</th>
+    <th></th>
+  </tr></thead>
+  <tbody>
+  {% for u in users %}
+  <tr>
+    <td>{{ u.name or '—' }}</td>
+    <td class="mono" style="font-size:12px">{{ u.email }}</td>
+    <td>
+      {% if u.is_admin %}
+        <span class="pill" style="background:var(--lavender);color:var(--purple);font-size:11px">Admin</span>
+      {% else %}
+        <span style="font-size:12px;color:var(--muted)">Usuario</span>
+      {% endif %}
+    </td>
+    <td style="font-size:12px;color:var(--muted)">
+      {{ u.created_at.strftime('%d-%m-%Y') if u.created_at else '—' }}
+    </td>
+    <td>
+      <form method="post" action="{{ url_for('admin_users_reset_password', uid=u.id) }}"
+            style="display:flex;gap:6px;align-items:center">
+        <input type="text" name="password" placeholder="Nueva contraseña" required
+               style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;
+                      background:var(--bg);color:var(--fg);font-size:12px;width:140px">
+        <button type="submit" class="btn" style="font-size:11px;padding:5px 10px">Cambiar</button>
+      </form>
+    </td>
+    <td>
+      {% if u.id != current_user.id %}
+      <form method="post" action="{{ url_for('admin_users_delete', uid=u.id) }}"
+            onsubmit="return confirm('¿Eliminar cuenta de {{ u.email }}?')">
+        <button type="submit" class="btn"
+                style="font-size:11px;padding:5px 10px;background:#fee2e2;color:#b91c1c;border:none">
+          Eliminar
+        </button>
+      </form>
+      {% else %}
+      <span style="font-size:11px;color:var(--muted)">(vos)</span>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
