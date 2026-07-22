@@ -193,6 +193,14 @@ async def _capture_rows(page, label, btn_id=None, btn_texts=(), max_secs=120):
 # ── Transform: Bins en Bodega ─────────────────────────────────────────────────
 
 def _transform_bins(raw_rows):
+    # Log all keys/indices from the first raw row so we can see what pWarehouse provides
+    if raw_rows:
+        first = raw_rows[0]
+        if isinstance(first, dict):
+            print(f'  [bins] raw row keys: {list(first.keys())}')
+            print(f'  [bins] sample row: {dict(list(first.items())[:20])}')
+        elif isinstance(first, list):
+            print(f'  [bins] raw row length: {len(first)}, values: {first[:20]}')
     bins = []
     for row in raw_rows:
         producto = str(_rv(row, 'PRODUCTO', 8) or '').strip()
