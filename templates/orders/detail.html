@@ -328,7 +328,7 @@
               </td>
               <td>{{ b.producto or '—' }}</td>
               <td>{{ b.caliber or '—' }}</td>
-              <td class="mono">{{ b.u_lb | int if b.u_lb and b.u_lb > 0 else '—' }}</td>
+              <td class="mono">{{ b.u_lb | int if b.u_lb and b.u_lb > 0 else (b.caliber or '—') }}</td>
               <td><span class="pill pill-{{ b.drying }}">{{ b.drying_label }}</span></td>
               <td class="num">{{ b.weight_kg }}</td>
               <td class="num">{{ b.humedad if b.humedad is not none else '—' }}</td>
