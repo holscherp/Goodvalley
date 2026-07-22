@@ -77,14 +77,17 @@
       <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:600;margin-top:4px">% Embarcado</div>
     </div>
     {% endif %}
-    <div class="card" style="padding:18px 24px;flex:1;min-width:200px;white-space:nowrap">
+    <div class="card" style="padding:18px 24px;flex:1;min-width:160px">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:700;margin-bottom:8px">Período</div>
-      <div style="font-size:.95rem;font-weight:700;display:flex;align-items:center;gap:8px">
-        <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600">Inicio</span>
-        {{ o.fecha_primer_embarque.strftime('%Y-%m-%d') if o.fecha_primer_embarque else '—' }}
-        <span style="color:var(--muted)">→</span>
-        <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600">Fin</span>
-        {{ o.fecha_ultimo_embarque.strftime('%Y-%m-%d') if o.fecha_ultimo_embarque else '—' }}
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div>
+          <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-right:6px">Inicio</span>
+          <span style="font-size:.95rem;font-weight:700">{{ o.fecha_primer_embarque.strftime('%Y-%m-%d') if o.fecha_primer_embarque else '—' }}</span>
+        </div>
+        <div>
+          <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-right:6px">Fin</span>
+          <span style="font-size:.95rem;font-weight:700">{{ o.fecha_ultimo_embarque.strftime('%Y-%m-%d') if o.fecha_ultimo_embarque else '—' }}</span>
+        </div>
       </div>
     </div>
     {% if o.proceso %}
