@@ -2685,6 +2685,67 @@ def create_app():
         )
         return redirect(url_for('list_procesos'))
 
+    @app.route('/admin/import-bins', methods=['POST'])
+    @login_required
+    def import_bins():
+        """Read a pWarehouse 'Bins en Bodega' Excel and patch u_lb on existing bins."""
+        f = request.files.get('bins_file')
+        if not f:
+            flash('No se seleccionó archivo.', 'err')
+            return redirect(url_for('list_bins'))
+        try:
+            import io as _io
+            import openpyxl as _xl
+            wb = _xl.load_workbook(_io.BytesIO(f.read()), read_only=True, data_only=True)
+            ws = wb.active
+            rows_iter = ws.iter_rows(values_only=True)
+            # Skip title row ("Bins en bodega") and find the header row
+            headers = None
+            for row in rows_iter:
+                if row and str(row[0] or '').strip().upper() == 'TEMPORADA':
+                    headers = [str(c or '').strip().upper() for c in row]
+                    break
+            if not headers:
+                flash('No se encontró fila de encabezados en el Excel.', 'err')
+                return redirect(url_for('list_bins'))
+            # Map column names to indices
+            def _col(name):
+                try: return headers.index(name)
+                except ValueError: return None
+            idx_tarja = _col('TARJA')
+            idx_ulb   = _col('U_LB')
+            if idx_tarja is None or idx_ulb is None:
+                flash(f'No se encontraron columnas TARJA o U_LB. Encabezados: {headers}', 'err')
+                return redirect(url_for('list_bins'))
+            # Build tarja → u_lb mapping
+            ulb_map = {}
+            for row in rows_iter:
+                if not row or row[idx_tarja] is None:
+                    continue
+                raw_tarja = row[idx_tarja]
+                tarja_str = str(round(float(raw_tarja))) if isinstance(raw_tarja, (int, float)) else str(raw_tarja).strip()
+                raw_ulb = row[idx_ulb]
+                if raw_ulb is not None:
+                    try:
+                        ulb_val = float(raw_ulb)
+                        if ulb_val > 0:
+                            ulb_map[tarja_str] = ulb_val
+                    except (ValueError, TypeError):
+                        pass
+            wb.close()
+            # Patch u_lb on matching bins
+            updated = 0
+            for tarja_str, ulb_val in ulb_map.items():
+                n = db.session.query(Bin).filter_by(bin_identifier=tarja_str).update(
+                    {'u_lb': ulb_val}, synchronize_session=False
+                )
+                updated += n
+            db.session.commit()
+            flash(f'Bins actualizados: {updated} bins con serie asignada ({len(ulb_map)} en el archivo).', 'ok')
+        except Exception as e:
+            flash(f'Error al importar bins: {e}', 'err')
+        return redirect(url_for('list_bins'))
+
     @app.route('/api/import-historico', methods=['POST'])
     def api_import_historico():
         """Passcode-protected endpoint for Google Apps Script to POST a Historico Excel."""
