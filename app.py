@@ -745,6 +745,13 @@ def create_app():
 
             status_path.write_text('done:0')
 
+            # Pull latest historico from Google Drive after pWarehouse sync
+            try:
+                _gdrive_pull_historico(_app)
+            except Exception as _gde:
+                with open(log_path, 'a') as lf:
+                    lf.write(f'⚠ Error en GDrive historico: {_gde}\n')
+
         threading.Thread(target=run, daemon=True).start()
         return jsonify({'job_id': job_id})
 
@@ -3396,6 +3403,75 @@ def _run_sync(flask_app):
 
 app = create_app()
 
+# ── Google Drive historico auto-import ───────────────────────────────────────
+
+def _gdrive_pull_historico(flask_app):
+    """Download historico .xlsx from Google Drive if it has been modified since last import."""
+    import json as _gj, io as _gio
+    creds_json = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON', '').strip()
+    folder_id  = os.environ.get('GOOGLE_DRIVE_FOLDER_ID', '').strip()
+    if not creds_json or not folder_id:
+        flask_app.logger.info('[gdrive] Skipping: env vars not set')
+        return
+    try:
+        from google.oauth2 import service_account as _gsa
+        from googleapiclient.discovery import build as _gbuild
+        from googleapiclient.http import MediaIoBaseDownload as _GMIBD
+        creds = _gsa.Credentials.from_service_account_info(
+            _gj.loads(creds_json),
+            scopes=['https://www.googleapis.com/auth/drive.readonly'],
+        )
+        svc = _gbuild('drive', 'v3', credentials=creds, cache_discovery=False)
+        results = svc.files().list(
+            q=(f"'{folder_id}' in parents and "
+               "mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' and "
+               "trashed=false"),
+            orderBy='modifiedTime desc',
+            pageSize=1,
+            fields='files(id,name,modifiedTime)',
+        ).execute()
+        files = results.get('files', [])
+        if not files:
+            flask_app.logger.info('[gdrive] No .xlsx files found in folder')
+            return
+        f             = files[0]
+        file_id       = f['id']
+        file_name     = f['name']
+        modified_time = f['modifiedTime']  # ISO string, e.g. "2026-07-23T14:00:00.000Z"
+
+        with flask_app.app_context():
+            from models import AppSetting as _GAS
+            last = _GAS.query.filter_by(key='gdrive_last_modified').first()
+            if last and last.value == modified_time:
+                flask_app.logger.info(f'[gdrive] Already up to date: {file_name}')
+                return
+
+        # File was modified — download it
+        req = svc.files().get_media(fileId=file_id)
+        buf = _gio.BytesIO()
+        dl  = _GMIBD(buf, req)
+        done = False
+        while not done:
+            _, done = dl.next_chunk()
+        excel_bytes = buf.getvalue()
+        flask_app.logger.info(f'[gdrive] Downloaded {file_name} ({len(excel_bytes):,} bytes)')
+
+        with flask_app.app_context():
+            n_rows, n_procs, n_odvs = _run_historico_import(excel_bytes)
+            from models import AppSetting as _GAS2
+            s = _GAS2.query.filter_by(key='gdrive_last_modified').first()
+            if s:
+                s.value = modified_time
+            else:
+                db.session.add(_GAS2(key='gdrive_last_modified', value=modified_time))
+            db.session.commit()
+        flask_app.logger.info(
+            f'[gdrive] Imported {file_name}: {n_rows} rows, {n_procs} procesos, {n_odvs} ODVs'
+        )
+    except Exception as _ge:
+        flask_app.logger.error(f'[gdrive] Error: {_ge}')
+
+
 # ── Auto-sync scheduler (every 6 hours) ──────────────────────────────────────
 import threading as _sched_thread
 import time as _sched_time
@@ -3406,6 +3482,8 @@ def _auto_sync_loop():
         try:
             app.logger.info('[auto-sync] Starting scheduled pWarehouse sync…')
             _run_sync(app)
+            app.logger.info('[auto-sync] Starting scheduled GDrive historico check…')
+            _gdrive_pull_historico(app)
         except Exception as _e:
             app.logger.error(f'[auto-sync scheduler] Unexpected error: {_e}')
         _sched_time.sleep(6 * 3600)  # sleep 6 hours
