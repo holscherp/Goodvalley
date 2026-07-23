@@ -747,14 +747,6 @@ def create_app():
                         lf.write(f'⚠ Error importando pallets: {_ep}\n')
                         lf.flush()
 
-            # Pull latest historico from Google Drive before marking done
-            try:
-                _gdrive_pull_historico(_app, log_path=log_path)
-            except Exception as _gde:
-                with open(log_path, 'a') as lf:
-                    lf.write(f'⚠ Error en GDrive historico: {_gde}\n')
-                    lf.flush()
-
             status_path.write_text('done:0')
 
         threading.Thread(target=run, daemon=True).start()
@@ -3483,24 +3475,35 @@ def _gdrive_pull_historico(flask_app, log_path=None):
         _log(f'⚠ Error Google Drive: {_ge}')
 
 
-# ── Auto-sync scheduler (every 6 hours) ──────────────────────────────────────
+# ── Auto-sync schedulers (every 6 hours, independent threads) ────────────────
 import threading as _sched_thread
 import time as _sched_time
 
 def _auto_sync_loop():
-    _sched_time.sleep(120)  # 2-minute warm-up after startup
+    """pWarehouse bins + pallets sync every 6 hours."""
+    _sched_time.sleep(120)  # 2-minute warm-up
     while True:
         try:
             app.logger.info('[auto-sync] Starting scheduled pWarehouse sync…')
             _run_sync(app)
-            app.logger.info('[auto-sync] Starting scheduled GDrive historico check…')
+        except Exception as _e:
+            app.logger.error(f'[auto-sync pWarehouse] Unexpected error: {_e}')
+        _sched_time.sleep(6 * 3600)
+
+def _gdrive_auto_loop():
+    """Google Drive historico pull every 6 hours, independent of pWarehouse sync."""
+    _sched_time.sleep(180)  # 3-minute warm-up (after pWarehouse starts)
+    while True:
+        try:
+            app.logger.info('[gdrive-auto] Checking Google Drive for updated historico…')
             _gdrive_pull_historico(app)
         except Exception as _e:
-            app.logger.error(f'[auto-sync scheduler] Unexpected error: {_e}')
-        _sched_time.sleep(6 * 3600)  # sleep 6 hours
+            app.logger.error(f'[gdrive-auto] Unexpected error: {_e}')
+        _sched_time.sleep(6 * 3600)
 
 if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
     _sched_thread.Thread(target=_auto_sync_loop, daemon=True, name='gv-auto-sync').start()
+    _sched_thread.Thread(target=_gdrive_auto_loop, daemon=True, name='gv-gdrive-auto').start()
 
 
 if __name__ == '__main__':
