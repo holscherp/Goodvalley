@@ -3085,9 +3085,10 @@ def _rebuild_summaries(df, WASTE_SERIES):
     from models import Proceso, OrdenDeVenta
     from sqlalchemy import insert as _sa_insert
 
-    # Snapshot first_seen_at before wiping tables so new OTs get now(), existing ones keep their date
-    proc_first_seen  = {p.ot: p.first_seen_at for p in Proceso.query.all()}
-    odv_first_seen   = {o.ot: o.first_seen_at  for o in OrdenDeVenta.query.all()}
+    # Snapshot existing OTs before wiping. _MISSING means OT is brand new this import.
+    _MISSING = object()
+    proc_first_seen  = {p.ot: (p.first_seen_at or _MISSING) for p in Proceso.query.all()}
+    odv_first_seen   = {o.ot: (o.first_seen_at  or _MISSING) for o in OrdenDeVenta.query.all()}
 
     OrdenDeVenta.query.delete(synchronize_session=False)
     Proceso.query.delete(synchronize_session=False)
@@ -3160,7 +3161,7 @@ def _rebuild_summaries(df, WASTE_SERIES):
             'humedad_avg': round(float(hum_vals.mean()), 1) if hum_vals is not None and not hum_vals.empty else None,
             'productores': ', '.join(sorted({str(p).strip() for p in pr_vals if p})) or None,
             'estado': estado, 'imported_at': now,
-            'first_seen_at': proc_first_seen.get(ot) or now,
+            'first_seen_at': (now if proc_first_seen.get(ot, _MISSING) is _MISSING else proc_first_seen.get(ot)),
         })
 
     if proc_records:
@@ -3194,7 +3195,7 @@ def _rebuild_summaries(df, WASTE_SERIES):
             'fecha_primer_embarque': fe_vals.min().to_pydatetime() if not fe_vals.empty else None,
             'fecha_ultimo_embarque': fe_vals.max().to_pydatetime() if not fe_vals.empty else None,
             'proceso_id': proc_id_by_ot.get(ot), 'imported_at': now,
-            'first_seen_at': odv_first_seen.get(ot) or now,
+            'first_seen_at': (now if odv_first_seen.get(ot, _MISSING) is _MISSING else odv_first_seen.get(ot)),
         })
 
     if odv_records:
