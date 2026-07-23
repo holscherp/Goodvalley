@@ -2820,17 +2820,23 @@ def create_app():
 
     @app.route('/pallets')
     def list_pallets():
-        from models import Pallet, HistoricoMovimiento, OrdenDeVenta, WASTE_SERIES
+        from models import Pallet, HistoricoMovimiento, OrdenDeVenta, Proceso, WASTE_SERIES
         from collections import OrderedDict as _OD, defaultdict as _dd
 
-        # OTs with real embarque = OrdenDeVenta rows where kg_embarcado > 0.
-        # OTs that appear in Embarques at 0% are excluded so they stay in Pendientes.
-        ots_with_embarque = {
-            o.ot for o in OrdenDeVenta.query
-            .with_entities(OrdenDeVenta.ot)
-            .filter(OrdenDeVenta.kg_embarcado > 0)
+        # OTs with meaningful embarque = ≥ 0.5% shipped (rounds to ≥ 1% on display).
+        # OTs at 0% in Embarques stay in Pendientes, not Saldos.
+        ots_with_embarque = set()
+        for _ot, _kg_emb, _kg_sal in (
+            db.session.query(OrdenDeVenta.ot, OrdenDeVenta.kg_embarcado, Proceso.kg_salida_bueno)
+            .outerjoin(Proceso, OrdenDeVenta.proceso_id == Proceso.id)
+            .filter(OrdenDeVenta.kg_embarcado.isnot(None), OrdenDeVenta.kg_embarcado > 0)
             .all()
-        }
+        ):
+            if _kg_sal and _kg_sal > 0:
+                if _kg_emb / _kg_sal >= 0.005:
+                    ots_with_embarque.add(_ot)
+            else:
+                ots_with_embarque.add(_ot)
 
         # ── Tab 1: Saldos (historico part) ───────────────────────────────────
         produced = (HistoricoMovimiento.query
