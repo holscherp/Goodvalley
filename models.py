@@ -506,6 +506,7 @@ class Proceso(db.Model):
     productores     = db.Column(db.Text,     nullable=True)   # comma-joined
     estado          = db.Column(db.String(40), nullable=True)
     imported_at     = db.Column(db.DateTime, default=datetime.utcnow)
+    first_seen_at   = db.Column(db.DateTime, nullable=True)
 
     @property
     def fecha_inicio_str(self):
@@ -550,6 +551,7 @@ class OrdenDeVenta(db.Model):
     fecha_ultimo_embarque = db.Column(db.DateTime, nullable=True)
     proceso_id           = db.Column(db.Integer, db.ForeignKey('procesos.id'), nullable=True)
     imported_at          = db.Column(db.DateTime, default=datetime.utcnow)
+    first_seen_at        = db.Column(db.DateTime, nullable=True)
 
     proceso = db.relationship('Proceso', backref='ordenes_de_venta', foreign_keys=[proceso_id])
 

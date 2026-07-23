@@ -11,6 +11,8 @@
     </p>
   </div>
   <div class="cards" style="margin:0;gap:10px">
+    {% set en_proceso_rows = display_rows | selectattr('estado', 'ne', 'embarcado') | list %}
+    {% set embarcado_rows  = display_rows | selectattr('estado', 'equalto', 'embarcado') | list %}
     <div class="card" style="min-width:0;padding:12px 18px">
       <div class="big">{{ display_rows|length }}</div>
       <div class="lbl">órdenes de trabajo</div>
@@ -24,7 +26,27 @@
   </div>
 </div>
 
-{% if display_rows %}
+{# ── Tabs ── #}
+<div style="display:flex;gap:6px;margin-bottom:18px">
+  <a href="{{ url_for('list_procesos', tab='en_proceso') }}"
+     style="padding:7px 18px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;
+            border:2px solid var(--purple);
+            background:{% if tab == 'en_proceso' %}var(--purple){% else %}transparent{% endif %};
+            color:{% if tab == 'en_proceso' %}#fff{% else %}var(--purple){% endif %}">
+    En Proceso ({{ en_proceso_rows|length }})
+  </a>
+  <a href="{{ url_for('list_procesos', tab='embarcados') }}"
+     style="padding:7px 18px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none;
+            border:2px solid var(--purple);
+            background:{% if tab == 'embarcados' %}var(--purple){% else %}transparent{% endif %};
+            color:{% if tab == 'embarcados' %}#fff{% else %}var(--purple){% endif %}">
+    Embarcados ({{ embarcado_rows|length }})
+  </a>
+</div>
+
+{% set active_rows = embarcado_rows if tab == 'embarcados' else en_proceso_rows %}
+
+{% if active_rows %}
 <div style="margin-bottom:10px">
   <input id="proc-search" type="text" placeholder="Buscar OT, tipo, productor…"
          style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
@@ -46,12 +68,18 @@
     <th>Fin</th>
   </tr></thead>
   <tbody>
-  {% for r in display_rows %}
+  {% for r in active_rows %}
   <tr style="cursor:pointer" onclick="location.href='{{ url_for('proceso_detail', ot=r.base_ot) }}'">
     <td class="mono" style="font-weight:600;line-height:1.6">
       <a href="{{ url_for('proceso_detail', ot=r.base_ot) }}" style="color:var(--purple);text-decoration:none;display:block">
         {{ r.base_ot }}
       </a>
+      {% if r.is_new %}
+        <span style="font-size:10px;background:var(--purple);color:#fff;
+                     border-radius:10px;padding:1px 7px;font-weight:700;display:inline-block;letter-spacing:.04em">
+          NUEVO
+        </span>
+      {% endif %}
       {% if r.n_lineas > 1 %}
         <span style="font-size:10px;background:var(--lavender);color:var(--purple);
                      border-radius:10px;padding:1px 6px;font-weight:700;display:inline-block">
@@ -101,10 +129,7 @@ function filterProcesos(q) {
 </script>
 {% else %}
 <div class="empty">
-  <p>No hay procesos importados todavía.</p>
-  <p class="muted" style="margin-top:6px">
-    Presioná <strong>Actualizar → Subir Histórico</strong> para importar el archivo Excel.
-  </p>
+  <p>No hay procesos en esta categoría.</p>
 </div>
 {% endif %}
 

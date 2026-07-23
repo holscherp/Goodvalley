@@ -2240,6 +2240,7 @@ def create_app():
             all_fin    = [p.fecha_fin    for p in procs if p.fecha_fin]
             secados = {s.strip() for p in procs for s in (p.secado or '').split(',') if s.strip()}
             hum_vals_p = [p.humedad_avg for p in procs if p.humedad_avg is not None]
+            earliest_seen = min((p.first_seen_at for p in procs if p.first_seen_at), default=None)
             display_rows.append({
                 'base_ot':      base_ot,
                 'procs':        procs,
@@ -2256,9 +2257,13 @@ def create_app():
                 'tipoproceso':  procs[0].tipoproceso,
                 'secado':       ', '.join(sorted(secados)),
                 'temporada':    procs[0].temporada,
+                'first_seen_at': earliest_seen,
+                'is_new': earliest_seen and (datetime.utcnow() - earliest_seen).total_seconds() < 86400,
             })
 
-        return render_template('procesos.html', display_rows=display_rows, last_imported=last_imported)
+        tab = request.args.get('tab', 'en_proceso')
+        return render_template('procesos.html', display_rows=display_rows,
+                               last_imported=last_imported, tab=tab)
 
     @app.route('/procesos/<path:ot>')
     def proceso_detail(ot):
@@ -2320,6 +2325,7 @@ def create_app():
             proceso = next((o.proceso for o in ords if o.proceso), None)
             kg_salida = sum(o.proceso.kg_salida_bueno or 0 for o in ords if o.proceso) or None
             hum_vals_o = [o.humedad_avg for o in ords if o.humedad_avg is not None]
+            earliest_seen = min((o.first_seen_at for o in ords if o.first_seen_at), default=None)
             display_rows.append({
                 'base_ot':               base_ot,
                 'ords':                  ords,
@@ -2331,6 +2337,8 @@ def create_app():
                 'fecha_primer_embarque': min(fechas_p) if fechas_p else None,
                 'fecha_ultimo_embarque': max(fechas_u) if fechas_u else None,
                 'proceso':               proceso,
+                'first_seen_at':         earliest_seen,
+                'is_new': earliest_seen and (datetime.utcnow() - earliest_seen).total_seconds() < 86400,
             })
 
         return render_template('ordenes_de_venta.html',
@@ -3061,6 +3069,10 @@ def _rebuild_summaries(df, WASTE_SERIES):
     from models import Proceso, OrdenDeVenta
     from sqlalchemy import insert as _sa_insert
 
+    # Snapshot first_seen_at before wiping tables so new OTs get now(), existing ones keep their date
+    proc_first_seen  = {p.ot: p.first_seen_at for p in Proceso.query.all()}
+    odv_first_seen   = {o.ot: o.first_seen_at  for o in OrdenDeVenta.query.all()}
+
     OrdenDeVenta.query.delete(synchronize_session=False)
     Proceso.query.delete(synchronize_session=False)
     db.session.commit()
@@ -3132,6 +3144,7 @@ def _rebuild_summaries(df, WASTE_SERIES):
             'humedad_avg': round(float(hum_vals.mean()), 1) if hum_vals is not None and not hum_vals.empty else None,
             'productores': ', '.join(sorted({str(p).strip() for p in pr_vals if p})) or None,
             'estado': estado, 'imported_at': now,
+            'first_seen_at': proc_first_seen.get(ot) or now,
         })
 
     if proc_records:
@@ -3165,6 +3178,7 @@ def _rebuild_summaries(df, WASTE_SERIES):
             'fecha_primer_embarque': fe_vals.min().to_pydatetime() if not fe_vals.empty else None,
             'fecha_ultimo_embarque': fe_vals.max().to_pydatetime() if not fe_vals.empty else None,
             'proceso_id': proc_id_by_ot.get(ot), 'imported_at': now,
+            'first_seen_at': odv_first_seen.get(ot) or now,
         })
 
     if odv_records:
@@ -3251,6 +3265,8 @@ def _migrate(db_obj):
         'ALTER TABLE pallets ADD COLUMN IF NOT EXISTS unidades INTEGER',
         'ALTER TABLE procesos ADD COLUMN IF NOT EXISTS humedad_avg FLOAT',
         'ALTER TABLE ordenes_de_venta ADD COLUMN IF NOT EXISTS humedad_avg FLOAT',
+        'ALTER TABLE procesos ADD COLUMN IF NOT EXISTS first_seen_at TIMESTAMP',
+        'ALTER TABLE ordenes_de_venta ADD COLUMN IF NOT EXISTS first_seen_at TIMESTAMP',
         """CREATE TABLE IF NOT EXISTS users (
             id            SERIAL PRIMARY KEY,
             email         VARCHAR(200) UNIQUE NOT NULL,
