@@ -181,7 +181,7 @@ def create_app():
             db.session.commit()
 
     # ── Block every route for unauthenticated users ───────────────────────────
-    _PUBLIC_ENDPOINTS = {'login', 'static'}
+    _PUBLIC_ENDPOINTS = {'login', 'static', 'api_import_historico', 'api_sync_trigger'}
 
     @app.before_request
     def require_login():
