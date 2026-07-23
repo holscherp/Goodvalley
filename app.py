@@ -277,7 +277,7 @@ def create_app():
 
     @app.route('/')
     def index():
-        from models import Bin, Order, Allocation
+        from models import Bin, Order, Allocation, Pallet
         from sqlalchemy import func
 
         total   = Bin.query.count()
@@ -285,6 +285,12 @@ def create_app():
         kg      = db.session.query(func.sum(Bin.weight_kg)).filter_by(status='available').scalar() or 0
         n_open  = Order.query.filter(Order.status.in_(['open', 'confirmed'])).count()
         alloc_n = Allocation.query.count()
+
+        # Last sync time: most recent synced_at across Bins and Pallets
+        last_bin_sync    = db.session.query(func.max(Bin.synced_at)).scalar()
+        last_pallet_sync = db.session.query(func.max(Pallet.synced_at)).scalar()
+        candidates = [t for t in [last_bin_sync, last_pallet_sync] if t]
+        last_sync = max(candidates) if candidates else None
 
         # Summary by caliber + drying (available bins only)
         rows = (
@@ -305,6 +311,7 @@ def create_app():
             total=total, avail=avail, kg=round(kg, 1),
             n_open=n_open, alloc_n=alloc_n, summary_rows=rows,
             DRYING_LABELS=DRYING_LABELS,
+            last_sync=last_sync,
         )
 
     # ── Sync ──────────────────────────────────────────────────────────────────

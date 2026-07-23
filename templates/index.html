@@ -12,6 +12,13 @@
   <div class="card"><div class="big">{{ n_open }}</div><div class="lbl">Órdenes abiertas</div></div>
 </div>
 
+{% if last_sync %}
+<p class="muted" style="font-size:12px;margin-bottom:20px">
+  Última sincronización de Bins y Pallets:
+  <strong>{{ last_sync.strftime('%d-%m-%Y %H:%M') }}</strong>
+</p>
+{% endif %}
+
 <div class="row-between">
   <h2>Stock disponible por calibre y secado</h2>
   <div style="display:flex;gap:8px">
