@@ -1556,7 +1556,7 @@ def create_app():
         return send_file(buf, download_name=filename, as_attachment=True,
                          mimetype='application/pdf')
 
-    # ── Order send email (via Resend API — HTTPS, no SMTP port needed) ────────
+    # ── Order send email (via Brevo API — HTTPS, no domain verification needed)
 
     @app.route('/orders/<int:order_id>/send-email', methods=['POST'])
     def send_order_email(order_id):
@@ -1567,12 +1567,12 @@ def create_app():
 
         order = Order.query.get_or_404(order_id)
 
-        api_key  = os.environ.get('RESEND_API_KEY', '').strip()
-        mail_from = os.environ.get('MAIL_FROM', 'onboarding@resend.dev').strip()
+        api_key   = os.environ.get('BREVO_API_KEY', '').strip()
+        mail_from = os.environ.get('MAIL_FROM', 'automation@goodvalley.cl').strip()
         mail_to   = os.environ.get('MAIL_TO', 'holschep@bc.edu').strip()
 
         if not api_key:
-            return jsonify({'ok': False, 'error': 'RESEND_API_KEY no configurado en el servidor.'})
+            return jsonify({'ok': False, 'error': 'BREVO_API_KEY no configurado en el servidor.'})
 
         try:
             buf, filename = _make_order_pdf(order)
@@ -1588,17 +1588,17 @@ def create_app():
         )
 
         payload = {
-            'from': f'Goodvalley <{mail_from}>',
-            'to': [mail_to],
-            'subject': f'Orden {ot_label} – {order.customer}',
-            'text': body,
-            'attachments': [{'filename': filename, 'content': pdf_b64}],
+            'sender':      {'name': 'Goodvalley', 'email': mail_from},
+            'to':          [{'email': mail_to}],
+            'subject':     f'Orden {ot_label} – {order.customer}',
+            'textContent': body,
+            'attachment':  [{'name': filename, 'content': pdf_b64}],
         }
 
         try:
             r = _req.post(
-                'https://api.resend.com/emails',
-                headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
+                'https://api.brevo.com/v3/smtp/email',
+                headers={'api-key': api_key, 'Content-Type': 'application/json'},
                 json=payload,
                 timeout=15,
             )
