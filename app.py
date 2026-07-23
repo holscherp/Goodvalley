@@ -1556,61 +1556,6 @@ def create_app():
         return send_file(buf, download_name=filename, as_attachment=True,
                          mimetype='application/pdf')
 
-    # ── Order send email (via Mailjet API — HTTPS, instant account activation)
-
-    @app.route('/orders/<int:order_id>/send-email', methods=['POST'])
-    def send_order_email(order_id):
-        import base64
-        import requests as _req
-        from flask import jsonify
-        from models import Order
-
-        order = Order.query.get_or_404(order_id)
-
-        api_key    = os.environ.get('MAILJET_API_KEY', '').strip()
-        api_secret = os.environ.get('MAILJET_SECRET_KEY', '').strip()
-        mail_from  = os.environ.get('MAIL_FROM', 'automation@goodvalley.cl').strip()
-        mail_to    = os.environ.get('MAIL_TO', 'holschep@bc.edu').strip()
-
-        if not api_key or not api_secret:
-            return jsonify({'ok': False, 'error': 'MAILJET_API_KEY / MAILJET_SECRET_KEY no configurados.'})
-
-        try:
-            buf, filename = _make_order_pdf(order)
-            pdf_b64 = base64.b64encode(buf.read()).decode()
-        except Exception as e:
-            return jsonify({'ok': False, 'error': f'Error generando PDF: {e}'})
-
-        ot_label = order.ot or f'#{order.id}'
-        body = (
-            f'Estimado/a,\n\n'
-            f'Adjunto encontrará la orden {ot_label} para {order.customer}.\n\n'
-            f'Saludos,\nGoodvalley'
-        )
-
-        payload = {
-            'Messages': [{
-                'From':        {'Email': mail_from, 'Name': 'Goodvalley'},
-                'To':          [{'Email': mail_to}],
-                'Subject':     f'Orden {ot_label} – {order.customer}',
-                'TextPart':    body,
-                'Attachments': [{'ContentType': 'application/pdf', 'Filename': filename, 'Base64Content': pdf_b64}],
-            }]
-        }
-
-        try:
-            r = _req.post(
-                'https://api.mailjet.com/v3.1/send',
-                auth=(api_key, api_secret),
-                json=payload,
-                timeout=15,
-            )
-            if r.status_code in (200, 201):
-                return jsonify({'ok': True, 'to': mail_to})
-            return jsonify({'ok': False, 'error': r.text})
-        except Exception as e:
-            return jsonify({'ok': False, 'error': str(e)})
-
     # ── Order download: Excel ─────────────────────────────────────────────────
 
     @app.route('/orders/<int:order_id>/download.xlsx')
