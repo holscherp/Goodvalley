@@ -85,6 +85,32 @@
        style="background:#1a5c3a;color:#fff;border:none;display:inline-flex;align-items:center;gap:5px">
       ↓ Excel
     </a>
+    <button id="btn-send-email" class="btn"
+            onclick="sendOrderEmail({{ order.id }})"
+            style="background:#3b0764;color:#fff;border:none;display:inline-flex;align-items:center;gap:5px">
+      ✉ Enviar
+    </button>
+    <script>
+    function sendOrderEmail(orderId) {
+      var btn = document.getElementById('btn-send-email');
+      btn.disabled = true;
+      btn.textContent = 'Enviando…';
+      fetch('/orders/' + orderId + '/send-email', {method:'POST'})
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (d.ok) {
+            btn.textContent = '✓ Enviado a ' + d.to;
+            btn.style.background = '#2d6a4f';
+          } else {
+            btn.textContent = '✗ Error';
+            btn.style.background = '#c0392b';
+            btn.disabled = false;
+            alert('Error: ' + d.error);
+          }
+        })
+        .catch(function(){ btn.textContent = '✗ Error de red'; btn.disabled = false; });
+    }
+    </script>
     {% endif %}
     {% if order.status in ('open', 'confirmed') %}
     <form method="post" action="{{ url_for('update_order_status', order_id=order.id) }}" class="inline">

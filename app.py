@@ -1394,11 +1394,10 @@ def create_app():
             DRYING_LABELS=DRYING_LABELS,
         )
 
-    # ── Order download: PDF ───────────────────────────────────────────────────
+    # ── Order PDF helper (shared by download and email) ──────────────────────
 
-    @app.route('/orders/<int:order_id>/download.pdf')
-    def download_order_pdf(order_id):
-        from models import Order
+    def _make_order_pdf(order):
+        """Return (BytesIO, filename) for the order PDF."""
         import io
         from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
                                         Paragraph, Spacer, HRFlowable)
@@ -1407,20 +1406,16 @@ def create_app():
         from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib.units import cm
 
-        order = Order.query.get_or_404(order_id)
-
         PURPLE = colors.HexColor('#3b0764')
         GREEN  = colors.HexColor('#2d6a4f')
         LTGRAY = colors.HexColor('#f4f4f8')
         LAVEND = colors.HexColor('#ede9fe')
         GRAY   = colors.HexColor('#666666')
 
-        # Styles
         h1     = ParagraphStyle('h1',  fontName='Helvetica-Bold', fontSize=20, textColor=PURPLE, spaceAfter=2)
         sub_st = ParagraphStyle('sub', fontName='Helvetica',       fontSize=9,  textColor=GRAY, spaceAfter=10)
         foot   = ParagraphStyle('ft',  fontName='Helvetica',       fontSize=7.5, textColor=colors.HexColor('#999999'))
         lstat  = ParagraphStyle('ls',  fontName='Helvetica',       fontSize=8.5, textColor=colors.HexColor('#444444'))
-        # Cell styles for table content (Paragraph handles encoding + wrapping)
         hdr_c  = ParagraphStyle('hc',  fontName='Helvetica-Bold',  fontSize=8,   textColor=colors.white,   leading=10)
         cell_c = ParagraphStyle('cc',  fontName='Helvetica',       fontSize=8.5, textColor=colors.black,   leading=11)
         tarja  = ParagraphStyle('tc',  fontName='Helvetica-Bold',  fontSize=8.5, textColor=PURPLE,         leading=11)
@@ -1429,17 +1424,13 @@ def create_app():
 
         def P(text, st): return Paragraph(str(text or '-'), st)
 
-        # A4 landscape: usable width = 29.7 - 3cm margins = 26.7cm
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
                                 leftMargin=1.5*cm, rightMargin=1.5*cm,
                                 topMargin=1.5*cm, bottomMargin=1.5*cm)
-        # Column widths (sum = 26.7cm)
         COL_W = [4*cm, 5*cm, 2.5*cm, 3*cm, 2.5*cm, 1.7*cm, 8*cm]
-
         story = []
 
-        # ── Page header ──
         story.append(Paragraph('GOODVALLEY', h1))
         ot_label = order.ot or f'#{order.id}'
         title = f'OT {ot_label}  |  {order.customer}'
@@ -1448,7 +1439,6 @@ def create_app():
         story.append(Paragraph(title, sub_st))
         story.append(HRFlowable(width='100%', thickness=1, color=PURPLE, spaceAfter=8))
 
-        # Order meta table
         meta = [
             [P('Cliente', ParagraphStyle('ml', fontName='Helvetica-Bold', fontSize=9, textColor=PURPLE)),
              P(order.customer or '-', cell_c),
@@ -1467,12 +1457,9 @@ def create_app():
         story.append(meta_tbl)
         story.append(Spacer(1, 0.4*cm))
 
-        # ── Per-line sections ──
         for line in order.lines:
             if not line.allocations:
                 continue
-
-            # Section header — spec_label already contains caliber + drying + product_type
             sec_label = f'LINEA: {line.spec_label}   |   {line.target_kg:,.1f} kg PT pedidos'
             hdr_tbl = Table([[P(sec_label, sec_h)]], colWidths=[26.7*cm])
             hdr_tbl.setStyle(TableStyle([
@@ -1485,7 +1472,6 @@ def create_app():
             story.append(hdr_tbl)
             story.append(Spacer(1, 0.15*cm))
 
-            # Build rows — all cells are Paragraph objects
             col_headers = ['TARJA', 'PRODUCTO', 'CALIBRE', 'SECADO', 'KG MP', 'HUM %', 'PRODUCTOR']
             rows = [[P(h, hdr_c) for h in col_headers]]
             total_kg = 0.0
@@ -1519,38 +1505,29 @@ def create_app():
                     ])
                     total_kg += s.weight_kg or 0
 
-            n = len(rows)  # includes header row
-            # Total row
+            n = len(rows)
             rows.append([
                 P('', cell_c), P('', cell_c), P('', cell_c), P('', cell_c),
                 P(f'{total_kg:,.1f} kg', tot_c),
                 P('', cell_c), P('', cell_c),
             ])
-
             style_cmds = [
-                # Header row
-                ('BACKGROUND',    (0, 0),  (-1, 0),      GREEN),
-                ('TOPPADDING',    (0, 0),  (-1, 0),      5),
-                ('BOTTOMPADDING', (0, 0),  (-1, 0),      5),
-                # Data rows
-                ('TOPPADDING',    (0, 1),  (-1, n),      4),
-                ('BOTTOMPADDING', (0, 1),  (-1, n),      4),
-                # Grid on data
-                ('GRID',          (0, 0),  (-1, n-1),    0.3, colors.HexColor('#dddddd')),
-                # Total row
-                ('BACKGROUND',    (0, n),  (-1, n),      LAVEND),
-                ('LINEABOVE',     (0, n),  (-1, n),      1.2, GREEN),
-                ('ALIGN',         (4, 0),  (4, -1),      'RIGHT'),
-                ('ALIGN',         (5, 0),  (5, -1),      'RIGHT'),
+                ('BACKGROUND',    (0, 0),  (-1, 0),   GREEN),
+                ('TOPPADDING',    (0, 0),  (-1, 0),   5),
+                ('BOTTOMPADDING', (0, 0),  (-1, 0),   5),
+                ('TOPPADDING',    (0, 1),  (-1, n),   4),
+                ('BOTTOMPADDING', (0, 1),  (-1, n),   4),
+                ('GRID',          (0, 0),  (-1, n-1), 0.3, colors.HexColor('#dddddd')),
+                ('BACKGROUND',    (0, n),  (-1, n),   LAVEND),
+                ('LINEABOVE',     (0, n),  (-1, n),   1.2, GREEN),
+                ('ALIGN',         (4, 0),  (4, -1),   'RIGHT'),
+                ('ALIGN',         (5, 0),  (5, -1),   'RIGHT'),
             ]
-            # Alternating row tint (skip header row 0)
             for i in range(2, n, 2):
                 style_cmds.append(('BACKGROUND', (0, i), (-1, i), LTGRAY))
-
             bin_tbl = Table(rows, colWidths=COL_W, repeatRows=1)
             bin_tbl.setStyle(TableStyle(style_cmds))
             story.append(bin_tbl)
-
             story.append(Spacer(1, 0.15*cm))
             story.append(Paragraph(
                 f'KG PT pedidos: <b>{line.target_kg:,.1f} kg</b>  |  '
@@ -1562,15 +1539,76 @@ def create_app():
         story.append(Paragraph(
             f'Generado el {datetime.now().strftime("%d/%m/%Y %H:%M")}', foot
         ))
-
         doc.build(story)
         buf.seek(0)
         safe_name = (order.customer or 'cliente').replace(' ', '_')
-        ot_file = (order.ot or str(order.id)).replace('/', '-')
-        return send_file(buf,
-                         download_name=f'orden_{ot_file}_{safe_name}.pdf',
-                         as_attachment=True,
+        ot_file   = (order.ot or str(order.id)).replace('/', '-')
+        filename  = f'orden_{ot_file}_{safe_name}.pdf'
+        return buf, filename
+
+    # ── Order download: PDF ───────────────────────────────────────────────────
+
+    @app.route('/orders/<int:order_id>/download.pdf')
+    def download_order_pdf(order_id):
+        from models import Order
+        order = Order.query.get_or_404(order_id)
+        buf, filename = _make_order_pdf(order)
+        return send_file(buf, download_name=filename, as_attachment=True,
                          mimetype='application/pdf')
+
+    # ── Order send email ──────────────────────────────────────────────────────
+
+    @app.route('/orders/<int:order_id>/send-email', methods=['POST'])
+    def send_order_email(order_id):
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.base import MIMEBase
+        from email.mime.text import MIMEText
+        from email import encoders as _enc
+        from flask import jsonify
+        from models import Order
+
+        order = Order.query.get_or_404(order_id)
+
+        mail_from = os.environ.get('MAIL_FROM', '').strip()
+        mail_pass = os.environ.get('MAIL_PASSWORD', '').strip()
+        mail_to   = os.environ.get('MAIL_TO', 'holschep@bc.edu').strip()
+
+        if not mail_from or not mail_pass:
+            return jsonify({'ok': False, 'error': 'Email no configurado en el servidor (MAIL_FROM / MAIL_PASSWORD).'})
+
+        try:
+            buf, filename = _make_order_pdf(order)
+            pdf_bytes = buf.read()
+        except Exception as e:
+            return jsonify({'ok': False, 'error': f'Error generando PDF: {e}'})
+
+        ot_label = order.ot or f'#{order.id}'
+        msg = MIMEMultipart()
+        msg['From']    = mail_from
+        msg['To']      = mail_to
+        msg['Subject'] = f'Orden {ot_label} – {order.customer}'
+
+        body = (
+            f'Estimado/a,\n\n'
+            f'Adjunto encontrará la orden {ot_label} para {order.customer}.\n\n'
+            f'Saludos,\nGoodvalley'
+        )
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+
+        part = MIMEBase('application', 'octet-stream')
+        part.set_payload(pdf_bytes)
+        _enc.encode_base64(part)
+        part.add_header('Content-Disposition', f'attachment; filename="{filename}"')
+        msg.attach(part)
+
+        try:
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as srv:
+                srv.login(mail_from, mail_pass)
+                srv.sendmail(mail_from, mail_to, msg.as_string())
+            return jsonify({'ok': True, 'to': mail_to})
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)})
 
     # ── Order download: Excel ─────────────────────────────────────────────────
 
