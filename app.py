@@ -286,11 +286,8 @@ def create_app():
         n_open  = Order.query.filter(Order.status.in_(['open', 'confirmed'])).count()
         alloc_n = Allocation.query.count()
 
-        # Last sync time: most recent synced_at across Bins and Pallets
-        last_bin_sync    = db.session.query(func.max(Bin.synced_at)).scalar()
-        last_pallet_sync = db.session.query(func.max(Pallet.synced_at)).scalar()
-        candidates = [t for t in [last_bin_sync, last_pallet_sync] if t]
-        last_sync = max(candidates) if candidates else None
+        # Last sync time: most recent synced_at from Pallets (Bins don't track this)
+        last_sync = db.session.query(func.max(Pallet.synced_at)).scalar()
 
         # Summary by caliber + drying (available bins only)
         rows = (
