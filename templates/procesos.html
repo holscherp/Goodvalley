@@ -47,11 +47,20 @@
 {% set active_rows = embarcado_rows if tab == 'embarcados' else en_proceso_rows %}
 
 {% if active_rows %}
-<div style="margin-bottom:10px">
+<div style="margin-bottom:10px;display:flex;gap:8px;align-items:center">
   <input id="proc-search" type="text" placeholder="Buscar OT, tipo, productor…"
          style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
                 background:var(--card);color:var(--fg);font-size:13px;width:280px"
          oninput="filterProcesos(this.value)">
+  <select onchange="location.href='{{ url_for('list_procesos', tab=tab) }}&sort='+this.value"
+          style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
+                 background:var(--card);color:var(--fg);font-size:13px;cursor:pointer">
+    <option value="recent"  {% if sort=='recent'  %}selected{% endif %}>Más reciente primero</option>
+    <option value="oldest"  {% if sort=='oldest'  %}selected{% endif %}>Más antiguo primero</option>
+    <option value="tipo"    {% if sort=='tipo'    %}selected{% endif %}>Por tipo de proceso</option>
+    <option value="secado"  {% if sort=='secado'  %}selected{% endif %}>Por secado</option>
+    <option value="rend"    {% if sort=='rend'    %}selected{% endif %}>Por rendimiento</option>
+  </select>
 </div>
 <table class="grid tight" id="proc-table">
   <thead><tr>

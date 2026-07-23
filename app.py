@@ -2261,9 +2261,17 @@ def create_app():
                 'is_new': earliest_seen and (datetime.utcnow() - earliest_seen).total_seconds() < 86400,
             })
 
-        tab = request.args.get('tab', 'en_proceso')
+        tab  = request.args.get('tab', 'en_proceso')
+        sort = request.args.get('sort', 'recent')
+        def _sort_key(r):
+            if sort == 'oldest': return (r['fecha_inicio'] or datetime.min)
+            if sort == 'tipo':   return (r['tipoproceso'] or '')
+            if sort == 'secado': return (r['secado'] or '')
+            if sort == 'rend':   return -(r['rendimiento_pct'] or 0)
+            return -(r['fecha_inicio'].timestamp() if r['fecha_inicio'] else 0)
+        display_rows.sort(key=_sort_key)
         return render_template('procesos.html', display_rows=display_rows,
-                               last_imported=last_imported, tab=tab)
+                               last_imported=last_imported, tab=tab, sort=sort)
 
     @app.route('/procesos/<path:ot>')
     def proceso_detail(ot):
@@ -2341,9 +2349,17 @@ def create_app():
                 'is_new': earliest_seen and (datetime.utcnow() - earliest_seen).total_seconds() < 86400,
             })
 
+        sort = request.args.get('sort', 'recent')
+        def _odv_sort(r):
+            if sort == 'oldest':  return (r['fecha_primer_embarque'] or datetime.min)
+            if sort == 'cliente': return (r['cliente'] or '')
+            if sort == 'kg':      return -(r['kg_embarcado'] or 0)
+            return -(r['fecha_primer_embarque'].timestamp() if r['fecha_primer_embarque'] else 0)
+        display_rows.sort(key=_odv_sort)
         return render_template('ordenes_de_venta.html',
                                display_rows=display_rows,
                                last_imported=last_imported,
+                               sort=sort,
                                total_ordenes=len(display_rows),
                                total_kg=sum(r['kg_embarcado'] or 0 for r in display_rows))
 

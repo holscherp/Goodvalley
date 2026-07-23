@@ -23,11 +23,19 @@
 </div>
 
 {% if display_rows %}
-<div style="margin-bottom:10px">
+<div style="margin-bottom:10px;display:flex;gap:8px;align-items:center">
   <input id="odv-search" type="text" placeholder="Buscar OT, cliente…"
          style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
                 background:var(--card);color:var(--fg);font-size:13px;width:280px"
          oninput="filterOdv(this.value)">
+  <select onchange="location.href='{{ url_for('list_ordenes_de_venta') }}?sort='+this.value"
+          style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;
+                 background:var(--card);color:var(--fg);font-size:13px;cursor:pointer">
+    <option value="recent"  {% if sort=='recent'  %}selected{% endif %}>Más reciente primero</option>
+    <option value="oldest"  {% if sort=='oldest'  %}selected{% endif %}>Más antiguo primero</option>
+    <option value="cliente" {% if sort=='cliente' %}selected{% endif %}>Por cliente</option>
+    <option value="kg"      {% if sort=='kg'      %}selected{% endif %}>Por KG embarcados</option>
+  </select>
 </div>
 <table class="grid tight" id="odv-table">
   <thead><tr>
