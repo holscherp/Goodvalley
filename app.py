@@ -1556,7 +1556,7 @@ def create_app():
         return send_file(buf, download_name=filename, as_attachment=True,
                          mimetype='application/pdf')
 
-    # ── Order send email (via Brevo API — HTTPS, no domain verification needed)
+    # ── Order send email (via Mailjet API — HTTPS, instant account activation)
 
     @app.route('/orders/<int:order_id>/send-email', methods=['POST'])
     def send_order_email(order_id):
@@ -1567,12 +1567,13 @@ def create_app():
 
         order = Order.query.get_or_404(order_id)
 
-        api_key   = os.environ.get('BREVO_API_KEY', '').strip()
-        mail_from = os.environ.get('MAIL_FROM', 'automation@goodvalley.cl').strip()
-        mail_to   = os.environ.get('MAIL_TO', 'holschep@bc.edu').strip()
+        api_key    = os.environ.get('MAILJET_API_KEY', '').strip()
+        api_secret = os.environ.get('MAILJET_SECRET_KEY', '').strip()
+        mail_from  = os.environ.get('MAIL_FROM', 'automation@goodvalley.cl').strip()
+        mail_to    = os.environ.get('MAIL_TO', 'holschep@bc.edu').strip()
 
-        if not api_key:
-            return jsonify({'ok': False, 'error': 'BREVO_API_KEY no configurado en el servidor.'})
+        if not api_key or not api_secret:
+            return jsonify({'ok': False, 'error': 'MAILJET_API_KEY / MAILJET_SECRET_KEY no configurados.'})
 
         try:
             buf, filename = _make_order_pdf(order)
@@ -1588,17 +1589,19 @@ def create_app():
         )
 
         payload = {
-            'sender':      {'name': 'Goodvalley', 'email': mail_from},
-            'to':          [{'email': mail_to}],
-            'subject':     f'Orden {ot_label} – {order.customer}',
-            'textContent': body,
-            'attachment':  [{'name': filename, 'content': pdf_b64}],
+            'Messages': [{
+                'From':        {'Email': mail_from, 'Name': 'Goodvalley'},
+                'To':          [{'Email': mail_to}],
+                'Subject':     f'Orden {ot_label} – {order.customer}',
+                'TextPart':    body,
+                'Attachments': [{'ContentType': 'application/pdf', 'Filename': filename, 'Base64Content': pdf_b64}],
+            }]
         }
 
         try:
             r = _req.post(
-                'https://api.brevo.com/v3/smtp/email',
-                headers={'api-key': api_key, 'Content-Type': 'application/json'},
+                'https://api.mailjet.com/v3.1/send',
+                auth=(api_key, api_secret),
                 json=payload,
                 timeout=15,
             )
