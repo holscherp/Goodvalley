@@ -1568,7 +1568,7 @@ def create_app():
         order = Order.query.get_or_404(order_id)
 
         api_key  = os.environ.get('RESEND_API_KEY', '').strip()
-        mail_from = os.environ.get('MAIL_FROM', 'automation@goodvalley.cl').strip()
+        mail_from = os.environ.get('MAIL_FROM', 'onboarding@resend.dev').strip()
         mail_to   = os.environ.get('MAIL_TO', 'holschep@bc.edu').strip()
 
         if not api_key:
