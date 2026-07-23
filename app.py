@@ -2820,14 +2820,13 @@ def create_app():
 
     @app.route('/pallets')
     def list_pallets():
-        from models import Pallet, HistoricoMovimiento, WASTE_SERIES
+        from models import Pallet, HistoricoMovimiento, OrdenDeVenta, WASTE_SERIES
         from collections import OrderedDict as _OD, defaultdict as _dd
 
-        # Which OTs have ever had an EMBARQUE
-        ots_with_embarque = {
-            r[0] for r in db.session.query(HistoricoMovimiento.ot)
-            .filter(HistoricoMovimiento.movimiento == 'EMBARQUE').all()
-        }
+        # OTs with real embarque = those that appear in OrdenDeVenta (built from
+        # _rebuild_summaries only when kg_embarcado > 0). This excludes OTs with
+        # 0% embarquado so they stay in Pendientes, not Saldos.
+        ots_with_embarque = {o.ot for o in OrdenDeVenta.query.with_entities(OrdenDeVenta.ot).all()}
 
         # ── Tab 1: Saldos (historico part) ───────────────────────────────────
         produced = (HistoricoMovimiento.query
@@ -2859,11 +2858,13 @@ def create_app():
 
         saldos = []
         for base_ot, prod_rows in groups.items():
-            sub_ots = {r.ot for r in prod_rows}
-            if not any(ot in ots_with_embarque for ot in sub_ots):
-                continue
             leftover = []
             for r in prod_rows:
+                # Only include tarjas from sub-OTs that have actually been shipped.
+                # This prevents sub-OTs with 0% embarquado from appearing in Saldos
+                # just because a sibling sub-OT had a partial shipment.
+                if r.ot not in ots_with_embarque:
+                    continue
                 tarja = (r.tarja or '').strip()
                 if not tarja or tarja not in consumed_by_ot.get(r.ot, set()):
                     leftover.append(r)
