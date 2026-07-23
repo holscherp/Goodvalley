@@ -743,14 +743,15 @@ def create_app():
                         lf.write(f'⚠ Error importando pallets: {_ep}\n')
                         lf.flush()
 
-            status_path.write_text('done:0')
-
-            # Pull latest historico from Google Drive after pWarehouse sync
+            # Pull latest historico from Google Drive before marking done
             try:
-                _gdrive_pull_historico(_app)
+                _gdrive_pull_historico(_app, log_path=log_path)
             except Exception as _gde:
                 with open(log_path, 'a') as lf:
                     lf.write(f'⚠ Error en GDrive historico: {_gde}\n')
+                    lf.flush()
+
+            status_path.write_text('done:0')
 
         threading.Thread(target=run, daemon=True).start()
         return jsonify({'job_id': job_id})
@@ -3405,13 +3406,21 @@ app = create_app()
 
 # ── Google Drive historico auto-import ───────────────────────────────────────
 
-def _gdrive_pull_historico(flask_app):
+def _gdrive_pull_historico(flask_app, log_path=None):
     """Download historico .xlsx from Google Drive if it has been modified since last import."""
     import json as _gj, io as _gio
+
+    def _log(msg):
+        flask_app.logger.info(msg)
+        if log_path:
+            with open(log_path, 'a') as _lf:
+                _lf.write(msg + '\n')
+                _lf.flush()
+
     creds_json = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON', '').strip()
     folder_id  = os.environ.get('GOOGLE_DRIVE_FOLDER_ID', '').strip()
     if not creds_json or not folder_id:
-        flask_app.logger.info('[gdrive] Skipping: env vars not set')
+        _log('[gdrive] Skipping: env vars not set')
         return
     try:
         from google.oauth2 import service_account as _gsa
@@ -3432,21 +3441,21 @@ def _gdrive_pull_historico(flask_app):
         ).execute()
         files = results.get('files', [])
         if not files:
-            flask_app.logger.info('[gdrive] No .xlsx files found in folder')
+            _log('► Google Drive: no se encontró archivo .xlsx en la carpeta')
             return
         f             = files[0]
         file_id       = f['id']
         file_name     = f['name']
-        modified_time = f['modifiedTime']  # ISO string, e.g. "2026-07-23T14:00:00.000Z"
+        modified_time = f['modifiedTime']
 
         with flask_app.app_context():
             from models import AppSetting as _GAS
             last = _GAS.query.filter_by(key='gdrive_last_modified').first()
             if last and last.value == modified_time:
-                flask_app.logger.info(f'[gdrive] Already up to date: {file_name}')
+                _log(f'► Histórico Google Drive: sin cambios ({file_name})')
                 return
 
-        # File was modified — download it
+        _log(f'► Histórico Google Drive modificado — descargando {file_name}…')
         req = svc.files().get_media(fileId=file_id)
         buf = _gio.BytesIO()
         dl  = _GMIBD(buf, req)
@@ -3454,7 +3463,7 @@ def _gdrive_pull_historico(flask_app):
         while not done:
             _, done = dl.next_chunk()
         excel_bytes = buf.getvalue()
-        flask_app.logger.info(f'[gdrive] Downloaded {file_name} ({len(excel_bytes):,} bytes)')
+        _log(f'► Descargado {file_name} ({len(excel_bytes):,} bytes) — importando…')
 
         with flask_app.app_context():
             n_rows, n_procs, n_odvs = _run_historico_import(excel_bytes)
@@ -3465,11 +3474,9 @@ def _gdrive_pull_historico(flask_app):
             else:
                 db.session.add(_GAS2(key='gdrive_last_modified', value=modified_time))
             db.session.commit()
-        flask_app.logger.info(
-            f'[gdrive] Imported {file_name}: {n_rows} rows, {n_procs} procesos, {n_odvs} ODVs'
-        )
+        _log(f'✓ Histórico importado: {n_rows} movimientos, {n_procs} procesos, {n_odvs} ODVs')
     except Exception as _ge:
-        flask_app.logger.error(f'[gdrive] Error: {_ge}')
+        _log(f'⚠ Error Google Drive: {_ge}')
 
 
 # ── Auto-sync scheduler (every 6 hours) ──────────────────────────────────────
