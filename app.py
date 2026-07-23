@@ -1556,57 +1556,55 @@ def create_app():
         return send_file(buf, download_name=filename, as_attachment=True,
                          mimetype='application/pdf')
 
-    # ── Order send email ──────────────────────────────────────────────────────
+    # ── Order send email (via Resend API — HTTPS, no SMTP port needed) ────────
 
     @app.route('/orders/<int:order_id>/send-email', methods=['POST'])
     def send_order_email(order_id):
-        import smtplib
-        from email.mime.multipart import MIMEMultipart
-        from email.mime.base import MIMEBase
-        from email.mime.text import MIMEText
-        from email import encoders as _enc
+        import base64
+        import requests as _req
         from flask import jsonify
         from models import Order
 
         order = Order.query.get_or_404(order_id)
 
-        mail_from = os.environ.get('MAIL_FROM', '').strip()
-        mail_pass = os.environ.get('MAIL_PASSWORD', '').strip()
+        api_key  = os.environ.get('RESEND_API_KEY', '').strip()
+        mail_from = os.environ.get('MAIL_FROM', 'automation@goodvalley.cl').strip()
         mail_to   = os.environ.get('MAIL_TO', 'holschep@bc.edu').strip()
 
-        if not mail_from or not mail_pass:
-            return jsonify({'ok': False, 'error': 'Email no configurado en el servidor (MAIL_FROM / MAIL_PASSWORD).'})
+        if not api_key:
+            return jsonify({'ok': False, 'error': 'RESEND_API_KEY no configurado en el servidor.'})
 
         try:
             buf, filename = _make_order_pdf(order)
-            pdf_bytes = buf.read()
+            pdf_b64 = base64.b64encode(buf.read()).decode()
         except Exception as e:
             return jsonify({'ok': False, 'error': f'Error generando PDF: {e}'})
 
         ot_label = order.ot or f'#{order.id}'
-        msg = MIMEMultipart()
-        msg['From']    = mail_from
-        msg['To']      = mail_to
-        msg['Subject'] = f'Orden {ot_label} – {order.customer}'
-
         body = (
             f'Estimado/a,\n\n'
             f'Adjunto encontrará la orden {ot_label} para {order.customer}.\n\n'
             f'Saludos,\nGoodvalley'
         )
-        msg.attach(MIMEText(body, 'plain', 'utf-8'))
 
-        part = MIMEBase('application', 'octet-stream')
-        part.set_payload(pdf_bytes)
-        _enc.encode_base64(part)
-        part.add_header('Content-Disposition', f'attachment; filename="{filename}"')
-        msg.attach(part)
+        payload = {
+            'from': f'Goodvalley <{mail_from}>',
+            'to': [mail_to],
+            'subject': f'Orden {ot_label} – {order.customer}',
+            'text': body,
+            'attachments': [{'filename': filename, 'content': pdf_b64}],
+        }
 
         try:
-            with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=10) as srv:
-                srv.login(mail_from, mail_pass)
-                srv.sendmail(mail_from, mail_to, msg.as_string())
-            return jsonify({'ok': True, 'to': mail_to})
+            r = _req.post(
+                'https://api.resend.com/emails',
+                headers={'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'},
+                json=payload,
+                timeout=15,
+            )
+            if r.status_code in (200, 201):
+                return jsonify({'ok': True, 'to': mail_to})
+            return jsonify({'ok': False, 'error': r.text})
         except Exception as e:
             return jsonify({'ok': False, 'error': str(e)})
 
