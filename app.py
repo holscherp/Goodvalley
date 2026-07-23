@@ -2823,10 +2823,14 @@ def create_app():
         from models import Pallet, HistoricoMovimiento, OrdenDeVenta, WASTE_SERIES
         from collections import OrderedDict as _OD, defaultdict as _dd
 
-        # OTs with real embarque = those that appear in OrdenDeVenta (built from
-        # _rebuild_summaries only when kg_embarcado > 0). This excludes OTs with
-        # 0% embarquado so they stay in Pendientes, not Saldos.
-        ots_with_embarque = {o.ot for o in OrdenDeVenta.query.with_entities(OrdenDeVenta.ot).all()}
+        # OTs with real embarque = OrdenDeVenta rows where kg_embarcado > 0.
+        # OTs that appear in Embarques at 0% are excluded so they stay in Pendientes.
+        ots_with_embarque = {
+            o.ot for o in OrdenDeVenta.query
+            .with_entities(OrdenDeVenta.ot)
+            .filter(OrdenDeVenta.kg_embarcado > 0)
+            .all()
+        }
 
         # ── Tab 1: Saldos (historico part) ───────────────────────────────────
         produced = (HistoricoMovimiento.query
