@@ -2832,6 +2832,14 @@ def create_app():
         return {'ok': True, 'status': 'sync started'}, 202
 
 
+    @app.route('/sync/gdrive/start', methods=['POST'])
+    def sync_gdrive_start():
+        import threading as _tgd
+        _app = app._get_current_object() if hasattr(app, '_get_current_object') else app
+        _tgd.Thread(target=lambda: _gdrive_pull_historico(_app, force=True), daemon=True).start()
+        flash('Sincronización de Histórico desde Google Drive iniciada.', 'ok')
+        return redirect(request.referrer or url_for('index'))
+
     @app.route('/pallets')
     def list_pallets():
         from models import Pallet, HistoricoMovimiento, OrdenDeVenta, Proceso, WASTE_SERIES
@@ -3460,7 +3468,7 @@ app = create_app()
 
 # ── Google Drive historico auto-import ───────────────────────────────────────
 
-def _gdrive_pull_historico(flask_app, log_path=None):
+def _gdrive_pull_historico(flask_app, log_path=None, force=False):
     """Download historico .xlsx from Google Drive if it has been modified since last import."""
     import json as _gj, io as _gio
 
@@ -3472,7 +3480,8 @@ def _gdrive_pull_historico(flask_app, log_path=None):
                 _lf.flush()
 
     creds_json = os.environ.get('GOOGLE_SERVICE_ACCOUNT_JSON', '').strip()
-    folder_id  = os.environ.get('GOOGLE_DRIVE_FOLDER_ID', '').strip()
+    folder_id  = (os.environ.get('GDRIVE_FOLDER_ID') or
+                  os.environ.get('GOOGLE_DRIVE_FOLDER_ID', '')).strip()
     if not creds_json or not folder_id:
         _log('[gdrive] Skipping: env vars not set')
         return
@@ -3505,7 +3514,7 @@ def _gdrive_pull_historico(flask_app, log_path=None):
         with flask_app.app_context():
             from models import AppSetting as _GAS
             last = _GAS.query.filter_by(key='gdrive_last_modified').first()
-            if last and last.value == modified_time:
+            if not force and last and last.value == modified_time:
                 _log(f'► Histórico Google Drive: sin cambios ({file_name})')
                 return
 

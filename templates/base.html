@@ -45,6 +45,11 @@
         <button class="act-item" type="button" onclick="gvSyncFullPopup();document.getElementById('act-dd').classList.remove('open')">
           Sync Bins/Pallets
         </button>
+        <form action="{{ url_for('sync_gdrive_start') }}" method="post" style="margin:0">
+          <button class="act-item" type="submit" onclick="document.getElementById('act-dd').classList.remove('open')">
+            Sync Histórico (Drive)
+          </button>
+        </form>
         <form action="{{ url_for('import_historico') }}" method="post" enctype="multipart/form-data" style="margin:0">
           <label class="act-item act-upload" title="Subir Histórico para Camilo (.xlsx)">
             Subir Histórico
