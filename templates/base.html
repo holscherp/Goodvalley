@@ -45,11 +45,9 @@
         <button class="act-item" type="button" onclick="gvSyncFullPopup();document.getElementById('act-dd').classList.remove('open')">
           Sync Bins/Pallets
         </button>
-        <form action="{{ url_for('sync_gdrive_start') }}" method="post" style="margin:0">
-          <button class="act-item" type="submit" onclick="document.getElementById('act-dd').classList.remove('open')">
-            Sync Histórico (Drive)
-          </button>
-        </form>
+        <button class="act-item" type="button" onclick="gvSyncHistoricoPopup();document.getElementById('act-dd').classList.remove('open')">
+          Sync Histórico (Drive)
+        </button>
         <form action="{{ url_for('import_historico') }}" method="post" enctype="multipart/form-data" style="margin:0">
           <label class="act-item act-upload" title="Subir Histórico para Camilo (.xlsx)">
             Subir Histórico
@@ -87,12 +85,13 @@ function gvSyncFullPopup() {
 window.addEventListener('message', function(e) {
   if (e.data === 'gv_sync_done') location.reload();
 });
-function gvSyncHistorico() {
-  document.getElementById('act-dd').classList.remove('open');
-  var APPS_URL = 'https://script.google.com/a/macros/goodvalley.cl/s/AKfycbxt2FORZe6bbNzjGryCdDSxxaC2qnj69J7TRuDhufTAeQ0c0OQkcA4fGnt42M7Hr5dBWA/exec';
-  fetch(APPS_URL, {method:'get', mode:'no-cors', credentials:'include'})
-    .catch(function(){});
-  alert('Sincronización iniciada. Refresca la página en ~30 segundos para ver los cambios.');
+function gvSyncHistoricoPopup() {
+  var APPS_URL = 'https://script.google.com/a/macros/goodvalley.cl/s/AKfycbxt2FORZe6bbNzjGryCdDSxxaC2qnj69J7TRuDhufTAeQ0c0OQkcA4fGnt42M7Hr5dBWA/exec?s=gv-historico-9k2m';
+  var w = 400, h = 160;
+  var left = Math.round(screen.width/2 - w/2);
+  var top  = Math.round(screen.height/2 - h/2);
+  window.open(APPS_URL, 'gv_historico', 'width='+w+',height='+h+',left='+left+',top='+top+',toolbar=no,location=no,menubar=no');
+  setTimeout(function() { location.reload(); }, 40000);
 }
 </script>
 
