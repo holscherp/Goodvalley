@@ -1,5 +1,14 @@
 import os, re as _re_app
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+_TZ = ZoneInfo('America/Santiago')
+
+def _to_santiago(dt):
+    """Convert a naive UTC datetime to Santiago local time."""
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=ZoneInfo('UTC')).astimezone(_TZ)
 
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file
 from flask_login import LoginManager, login_required, login_user, logout_user, current_user
@@ -147,6 +156,11 @@ def create_app():
     app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB upload limit
 
     db.init_app(app)
+
+    @app.template_filter('santiago')
+    def santiago_filter(dt):
+        """Convert UTC datetime to Santiago time for display in templates."""
+        return _to_santiago(dt)
 
     # ── Auth ──────────────────────────────────────────────────────────────────
     login_manager = LoginManager()

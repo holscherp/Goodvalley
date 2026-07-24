@@ -7,7 +7,7 @@
     <h1>Procesos</h1>
     <p class="muted">
       Órdenes de trabajo de producción, basado en Histórico para Camilo.
-      {% if last_imported %}· importado {{ last_imported.strftime('%d-%m-%Y %H:%M') }}{% endif %}
+      {% if last_imported %}· importado {{ (last_imported|santiago).strftime('%d-%m-%Y %H:%M') }}{% endif %}
     </p>
   </div>
   <div class="cards" style="margin:0;gap:10px">

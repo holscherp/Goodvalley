@@ -10,7 +10,7 @@
 <div class="row-between" style="margin-bottom:20px">
   <div>
     <h1>Pallets en Bodega</h1>
-    <p class="muted">Producto terminado disponible.{% if last_sync %} · última sync {{ last_sync.strftime('%d-%m-%Y %H:%M') }}{% endif %}</p>
+    <p class="muted">Producto terminado disponible.{% if last_sync %} · última sync {{ (last_sync|santiago).strftime('%d-%m-%Y %H:%M') }}{% endif %}</p>
   </div>
   <div class="cards" style="margin:0;gap:10px">
     <div class="card" style="padding:12px 18px">

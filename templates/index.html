@@ -15,7 +15,7 @@
 {% if last_sync %}
 <p class="muted" style="font-size:12px;margin-bottom:20px">
   Última sincronización de Bins y Pallets:
-  <strong>{{ last_sync.strftime('%d-%m-%Y %H:%M') }}</strong>
+  <strong>{{ (last_sync|santiago).strftime('%d-%m-%Y %H:%M') }}</strong>
 </p>
 {% endif %}
 
