@@ -2835,14 +2835,14 @@ def create_app():
     @app.route('/sync/gdrive/start', methods=['POST'])
     def sync_gdrive_start():
         import threading as _tgd, requests as _req
-        _APPS_SCRIPT_URL = 'https://script.google.com/a/macros/goodvalley.cl/s/AKfycbxt2FORZe6bbNzjGryCdDSxxaC2qnj69J7TRuDhufTAeQ0c0OQkcA4fGnt42M7Hr5dBWA/exec'
+        _APPS_SCRIPT_URL = 'https://script.google.com/a/macros/goodvalley.cl/s/AKfycbxt2FORZe6bbNzjGryCdDSxxaC2qnj69J7TRuDhufTAeQ0c0OQkcA4fGnt42M7Hr5dBWA/exec?s=gv-historico-9k2m'
         def _trigger():
             try:
-                _req.get(_APPS_SCRIPT_URL, timeout=300)
+                _req.get(_APPS_SCRIPT_URL, timeout=300, allow_redirects=True)
             except Exception as _e:
                 app.logger.error(f'[gdrive-trigger] {_e}')
         _tgd.Thread(target=_trigger, daemon=True).start()
-        flash('Sincronización de Histórico iniciada — tardará ~30 segundos.', 'ok')
+        flash('Sincronización iniciada — refresca en ~30 segundos.', 'ok')
         return redirect(request.referrer or url_for('index'))
 
     @app.route('/pallets')
